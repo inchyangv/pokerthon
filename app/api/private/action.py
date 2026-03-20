@@ -1,0 +1,155 @@
+"""Action submission endpoint with per-table locking."""
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.action_validator import ActionError
+from app.core.table_lock import get_table_lock
+from app.database import get_session
+from app.middleware.hmac_auth import require_hmac_auth
+from app.models.hand import Hand, HandStatus, HandPlayer, TableSnapshot
+from app.models.table import SeatStatus, Table, TableSeat
+from app.services.action_service import process_action
+from app.services.hand_service import get_active_hand
+
+router = APIRouter(prefix="/v1/private/tables", tags=["action"])
+
+# In-memory idempotency cache: idempotency_key -> response dict
+_idempotency_cache: dict[str, dict[str, Any]] = {}
+
+
+class ActionPayload(BaseModel):
+    type: str
+    amount: int | None = None
+
+
+class ActionRequest(BaseModel):
+    hand_id: int
+    state_version: int | None = None
+    idempotency_key: str | None = None
+    action: ActionPayload
+
+
+@router.post("/{table_no}/action")
+async def submit_action(
+    table_no: int,
+    body: ActionRequest,
+    session: AsyncSession = Depends(get_session),
+    account_id: int = Depends(require_hmac_auth),
+):
+    # Check idempotency before acquiring the lock (fast path)
+    if body.idempotency_key and body.idempotency_key in _idempotency_cache:
+        return _idempotency_cache[body.idempotency_key]
+
+    lock = get_table_lock(table_no)
+    async with lock:
+        # Re-check inside lock (another coroutine may have just processed it)
+        if body.idempotency_key and body.idempotency_key in _idempotency_cache:
+            return _idempotency_cache[body.idempotency_key]
+
+        # Load table
+        table_result = await session.execute(select(Table).where(Table.table_no == table_no))
+        table = table_result.scalar_one_or_none()
+        if not table:
+            raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Table not found"})
+
+        # Verify player is seated at this table
+        seat_result = await session.execute(
+            select(TableSeat).where(
+                TableSeat.table_id == table.id,
+                TableSeat.account_id == account_id,
+                TableSeat.seat_status.in_([SeatStatus.SEATED, SeatStatus.LEAVING_AFTER_HAND]),
+            )
+        )
+        seat = seat_result.scalar_one_or_none()
+        if not seat:
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "FORBIDDEN", "message": "Not seated at this table"},
+            )
+
+        # Load the active hand
+        hand = await get_active_hand(session, table.id)
+        if not hand:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "STALE_STATE", "message": "No active hand at this table"},
+            )
+
+        # Validate hand_id matches the current active hand
+        if hand.id != body.hand_id:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "STALE_STATE", "message": "hand_id does not match the current active hand"},
+            )
+
+        # Validate state_version (optional — skip if not provided)
+        if body.state_version is not None:
+            snap_result = await session.execute(
+                select(TableSnapshot).where(TableSnapshot.table_id == table.id)
+            )
+            snap = snap_result.scalar_one_or_none()
+            current_version = snap.version if snap else 0
+            if body.state_version != current_version:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "STALE_STATE", "message": "state_version mismatch"},
+                )
+
+        # Process the action
+        try:
+            action = await process_action(
+                session, hand, account_id, body.action.type, body.action.amount
+            )
+        except ActionError as e:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": e.code, "message": e.message},
+            )
+
+        # Refresh hand to get updated state after action
+        await session.refresh(hand)
+
+        # Update (or create) the TableSnapshot and increment version
+        snap_result = await session.execute(
+            select(TableSnapshot).where(TableSnapshot.table_id == table.id)
+        )
+        snap = snap_result.scalar_one_or_none()
+        snapshot_data = {
+            "hand_id": hand.id,
+            "street": hand.street,
+            "action_seat_no": hand.action_seat_no,
+        }
+        if snap:
+            snap.version += 1
+            snap.snapshot_json = json.dumps(snapshot_data)
+        else:
+            snap = TableSnapshot(
+                table_id=table.id,
+                version=1,
+                snapshot_json=json.dumps(snapshot_data),
+            )
+            session.add(snap)
+        await session.commit()
+
+        response: dict[str, Any] = {
+            "action": {
+                "seq": action.seq,
+                "type": action.action_type,
+                "amount": action.amount,
+                "amount_to": action.amount_to,
+                "street": action.street,
+            },
+            "state_version": snap.version,
+        }
+
+        if body.idempotency_key:
+            _idempotency_cache[body.idempotency_key] = response
+
+        return response
