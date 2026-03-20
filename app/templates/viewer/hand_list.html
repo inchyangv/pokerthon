@@ -1,0 +1,45 @@
+{% extends "viewer/base.html" %}
+{% block title %}핸드 히스토리 — 테이블 {{ table_no }}{% endblock %}
+{% block content %}
+
+<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;">
+  <h1>테이블 {{ table_no }} 핸드 히스토리</h1>
+  <a href="/viewer/tables/{{ table_no }}" class="btn btn-secondary" style="margin-left:auto;">← 라이브 뷰</a>
+</div>
+
+{% if hands %}
+<table>
+  <thead>
+    <tr>
+      <th>Hand #</th>
+      <th>보드</th>
+      <th>팟</th>
+      <th>시작</th>
+      <th>종료</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for h in hands %}
+  <tr>
+    <td><strong>#{{ h.hand_no }}</strong></td>
+    <td style="font-family:monospace;">{{ h.board | join(' ') or '-' }}</td>
+    <td>{{ h.total_pot or '-' }}</td>
+    <td style="font-size:.8rem;color:var(--text-muted);">{{ h.started_at or '-' }}</td>
+    <td style="font-size:.8rem;color:var(--text-muted);">{{ h.finished_at or '-' }}</td>
+    <td><a href="/viewer/tables/{{ table_no }}/hands/{{ h.hand_id }}">상세 →</a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<div class="pagination">
+  {% if prev_cursor %}<a href="/viewer/tables/{{ table_no }}/hands?cursor={{ prev_cursor }}">← 이전</a>{% endif %}
+  {% if next_cursor %}<a href="/viewer/tables/{{ table_no }}/hands?cursor={{ next_cursor }}">다음 →</a>{% endif %}
+</div>
+
+{% else %}
+<p style="color:var(--text-muted);text-align:center;padding:2rem;">아직 완료된 핸드가 없습니다.</p>
+{% endif %}
+
+{% endblock %}

@@ -67,6 +67,90 @@ async def lobby(request: Request, session: AsyncSession = Depends(get_session)):
     })
 
 
+@router.get("/tables/{table_no}/hands/{hand_id}", response_class=HTMLResponse)
+async def hand_detail_viewer(
+    request: Request,
+    table_no: int,
+    hand_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    table_result = await session.execute(select(Table).where(Table.table_no == table_no))
+    table = table_result.scalar_one_or_none()
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found")
+
+    from app.services.history_service import get_hand_detail, get_hand_actions
+    detail = await get_hand_detail(session, table.id, hand_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail="Hand not found")
+
+    actions = await get_hand_actions(session, hand_id)
+
+    # Enrich players with profit
+    players = detail.get("players", [])
+    for p in players:
+        p["profit"] = p.get("ending_stack", 0) - p.get("starting_stack", 0)
+
+    winner_seats = detail.get("winners", [])
+
+    hand = {
+        "hand_no": detail.get("hand_no"),
+        "board": detail.get("board", []),
+        "started_at": detail.get("started_at"),
+        "finished_at": detail.get("finished_at"),
+    }
+
+    return templates.TemplateResponse(request, "viewer/hand_detail.html", {
+        "table_no": table_no,
+        "hand": hand,
+        "players": players,
+        "result": {"winner_seats": winner_seats} if winner_seats else None,
+        "actions": actions,
+    })
+
+
+@router.get("/tables/{table_no}/hands", response_class=HTMLResponse)
+async def hand_list_viewer(
+    request: Request,
+    table_no: int,
+    cursor: int | None = Query(default=None),
+    session: AsyncSession = Depends(get_session),
+):
+    table_result = await session.execute(select(Table).where(Table.table_no == table_no))
+    table = table_result.scalar_one_or_none()
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found")
+
+    from app.services.history_service import get_hand_list
+    import json
+
+    data = await get_hand_list(session, table.id, limit=20, cursor=cursor)
+    raw_hands = data.get("items", [])
+
+    hands_out = []
+    for h in raw_hands:
+        board = h.get("board", [])
+        pot = h.get("pot_summary", {})
+        total_pot = None
+        if isinstance(pot, dict):
+            total_pot = pot.get("main_pot", 0) + sum(sp.get("amount", 0) for sp in pot.get("side_pots", []))
+        hands_out.append({
+            "hand_id": h["hand_id"],
+            "hand_no": h["hand_no"],
+            "board": board,
+            "total_pot": total_pot,
+            "started_at": h.get("started_at"),
+            "finished_at": h.get("finished_at"),
+        })
+
+    return templates.TemplateResponse(request, "viewer/hand_list.html", {
+        "table_no": table_no,
+        "hands": hands_out,
+        "next_cursor": data.get("next_cursor"),
+        "prev_cursor": None,
+    })
+
+
 @router.get("/leaderboard", response_class=HTMLResponse)
 async def leaderboard_page(
     request: Request,

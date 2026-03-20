@@ -1,0 +1,80 @@
+{% extends "viewer/base.html" %}
+{% block title %}핸드 #{{ hand.hand_no }} — 테이블 {{ table_no }}{% endblock %}
+{% block content %}
+
+<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;">
+  <h1>핸드 #{{ hand.hand_no }}</h1>
+  <a href="/viewer/tables/{{ table_no }}/hands" class="btn btn-secondary" style="margin-left:auto;">← 목록</a>
+</div>
+
+<!-- Hand Summary -->
+<div class="card" style="margin-bottom:1rem;">
+  <div style="display:flex;gap:2rem;flex-wrap:wrap;">
+    <div><strong>테이블</strong> {{ table_no }}</div>
+    <div><strong>시작</strong> {{ hand.started_at or '-' }}</div>
+    <div><strong>종료</strong> {{ hand.finished_at or '-' }}</div>
+  </div>
+  <div style="margin-top:.75rem;">
+    <strong>보드</strong>
+    <span style="font-family:monospace;font-size:1.1rem;margin-left:.5rem;">
+      {{ hand.board | join(' ') or '(없음)' }}
+    </span>
+  </div>
+</div>
+
+<!-- Players -->
+<div class="card" style="margin-bottom:1rem;">
+  <h2>참가자</h2>
+  <table>
+    <thead>
+      <tr><th>좌석</th><th>닉네임</th><th>시작 스택</th><th>종료 스택</th><th>손익</th><th>홀카드</th></tr>
+    </thead>
+    <tbody>
+    {% for p in players %}
+    <tr>
+      <td>{{ p.seat_no }}</td>
+      <td>{{ p.nickname or '?' }}{% if p.folded %} <span style="color:var(--text-muted);">(폴드)</span>{% endif %}</td>
+      <td>{{ p.starting_stack }}</td>
+      <td>{{ p.ending_stack }}</td>
+      <td style="color:{% if p.profit >= 0 %}#4caf50{% else %}#e53935{% endif %}">
+        {{ '+' if p.profit >= 0 else '' }}{{ p.profit }}
+      </td>
+      <td style="font-family:monospace;">{{ p.hole_cards | join(' ') if p.hole_cards else '-' }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Pot Distribution -->
+{% if result %}
+<div class="card" style="margin-bottom:1rem;">
+  <h2>팟 분배</h2>
+  <p>승자 좌석: {{ result.winner_seats | join(', ') or '-' }}</p>
+</div>
+{% endif %}
+
+<!-- Action Timeline -->
+<div class="card">
+  <h2>액션 타임라인</h2>
+  {% set streets = ['preflop', 'flop', 'turn', 'river', 'showdown'] %}
+  {% for street in streets %}
+    {% set street_actions = actions | selectattr('street', 'equalto', street) | list %}
+    {% if street_actions %}
+    <div style="margin-bottom:1rem;">
+      <h3 style="font-size:1rem;color:var(--accent);text-transform:uppercase;margin-bottom:.5rem;">{{ street }}</h3>
+      {% for a in street_actions %}
+      <div class="action-item {% if a.is_system %}action-system{% else %}action-player{% endif %}">
+        {% if a.is_system %}
+          [시스템] {{ a.action_type }}{% if a.amount %} {{ a.amount }}{% endif %}
+        {% else %}
+          [좌석 {{ a.actor_seat_no }}] {{ a.action_type }}{% if a.amount %} {{ a.amount }}{% endif %}
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  {% endfor %}
+</div>
+
+{% endblock %}
