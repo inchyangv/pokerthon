@@ -2,10 +2,12 @@ import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.api.admin.accounts import router as admin_accounts_router
 from app.api.admin.chips import router as admin_chips_router
 from app.api.admin.tables import router as admin_tables_router
+from app.api.admin.views import router as admin_views_router
 from app.api.private.action import router as private_action_router
 from app.api.private.me import router as private_me_router
 from app.api.private.state import router as private_state_router
@@ -51,7 +53,9 @@ app = FastAPI(
 )
 
 app.add_middleware(AdminAuthMiddleware)
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
+app.include_router(admin_views_router)
 app.include_router(health_router)
 app.include_router(admin_accounts_router)
 app.include_router(admin_credentials_router)

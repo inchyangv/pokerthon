@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>Pokerthon Admin Login</title>
+  <link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+<div style="max-width:380px;margin:5rem auto;padding:0 1rem;">
+  <div class="card">
+    <h2>🂡 Admin Login</h2>
+    {% if error %}
+      <div class="alert alert-error">{{ error }}</div>
+    {% endif %}
+    <form method="post" action="/admin/login">
+      <div class="form-group">
+        <label for="password">관리자 비밀번호</label>
+        <input type="password" id="password" name="password" autofocus required>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%">로그인</button>
+    </form>
+  </div>
+</div>
+</body>
+</html>

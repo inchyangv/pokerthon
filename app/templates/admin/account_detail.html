@@ -1,0 +1,107 @@
+{% extends "admin/base.html" %}
+{% block title %}{{ account.nickname }} — Pokerthon Admin{% endblock %}
+{% block content %}
+<a href="/admin/accounts" style="color:#3498db;">← 계정 목록</a>
+<h1>{{ account.nickname }}</h1>
+<div class="grid-2">
+  <!-- 계정 정보 + API 키 -->
+  <div>
+    <div class="card">
+      <h2>계정 정보</h2>
+      <p><strong>ID:</strong> {{ account.id }}</p>
+      <p><strong>상태:</strong> <span class="badge badge-{{ account.status.lower() }}">{{ account.status }}</span></p>
+      <p><strong>지갑 잔액:</strong> {{ account.wallet_balance }} 칩</p>
+      <p><strong>현재 테이블:</strong> {{ current_table_no or '—' }}</p>
+    </div>
+
+    <div class="card">
+      <h2>API 키</h2>
+      {% if credential %}
+        <p><strong>API Key:</strong> <code>{{ credential.api_key[:8] }}…</code></p>
+        <p><strong>상태:</strong> <span class="badge badge-{{ credential.status.lower() }}">{{ credential.status }}</span></p>
+        <p><strong>생성일:</strong> {{ credential.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+        {% if credential.revoked_at %}
+          <p><strong>폐기일:</strong> {{ credential.revoked_at.strftime('%Y-%m-%d %H:%M') }}</p>
+        {% endif %}
+      {% else %}
+        <p style="color:#999;">활성 키 없음</p>
+      {% endif %}
+
+      {% if new_secret %}
+        <div class="alert alert-success">
+          <strong>새 SECRET_KEY (1회만 표시):</strong>
+          <div class="secret-box" id="secret-box">{{ new_secret }}</div>
+          <button onclick="navigator.clipboard.writeText('{{ new_secret }}')" class="btn btn-sm btn-primary" style="margin-top:0.5rem;">복사</button>
+        </div>
+      {% endif %}
+
+      <div style="display:flex;gap:0.5rem;margin-top:0.75rem;">
+        <form method="post" action="/admin/accounts/{{ account.id }}/credentials/issue">
+          <button type="submit" class="btn btn-primary btn-sm">키 발급</button>
+        </form>
+        {% if credential and credential.status == 'ACTIVE' %}
+        <form method="post" action="/admin/accounts/{{ account.id }}/credentials/revoke">
+          <button type="submit" class="btn btn-danger btn-sm">키 폐기</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- 칩 관리 -->
+  <div>
+    <div class="card">
+      <h2>칩 지급</h2>
+      <form method="post" action="/admin/accounts/{{ account.id }}/grant">
+        <div class="form-group">
+          <label>금액</label>
+          <input type="number" name="amount" min="1" required>
+        </div>
+        <div class="form-group">
+          <label>사유</label>
+          <input type="text" name="reason" value="admin_grant">
+        </div>
+        <button type="submit" class="btn btn-primary">지급</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>칩 차감</h2>
+      <form method="post" action="/admin/accounts/{{ account.id }}/deduct">
+        <div class="form-group">
+          <label>금액</label>
+          <input type="number" name="amount" min="1" required>
+        </div>
+        <div class="form-group">
+          <label>사유</label>
+          <input type="text" name="reason" value="admin_deduct">
+        </div>
+        <button type="submit" class="btn btn-danger">차감</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- 칩 원장 -->
+<div class="card">
+  <h2>칩 원장</h2>
+  <table>
+    <thead>
+      <tr><th>시각</th><th>유형</th><th>변동</th><th>잔액</th><th>사유</th></tr>
+    </thead>
+    <tbody>
+      {% for entry in ledger %}
+      <tr>
+        <td>{{ entry.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+        <td>{{ entry.reason_type }}</td>
+        <td style="color:{{ 'green' if entry.delta >= 0 else 'red' }}">{{ '+' if entry.delta > 0 else '' }}{{ entry.delta }}</td>
+        <td>{{ entry.balance_after }}</td>
+        <td>{{ entry.reason_text or '—' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" style="text-align:center;color:#999;">원장 없음</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "admin/base.html" %}
+{% block title %}계정 목록 — Pokerthon Admin{% endblock %}
+{% block content %}
+<h1>계정 목록</h1>
+<div class="card" style="margin-bottom:1rem;">
+  <h2>계정 생성</h2>
+  <form method="post" action="/admin/accounts/create" style="display:flex;gap:0.5rem;align-items:flex-end;">
+    <div class="form-group" style="flex:1;margin:0;">
+      <label for="nickname">닉네임</label>
+      <input type="text" id="nickname" name="nickname" required>
+    </div>
+    <button type="submit" class="btn btn-primary">생성</button>
+  </form>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>닉네임</th>
+      <th>상태</th>
+      <th>지갑 잔액</th>
+      <th>생성일</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for acc in accounts %}
+    <tr>
+      <td>{{ acc.id }}</td>
+      <td>{{ acc.nickname }}</td>
+      <td><span class="badge badge-{{ acc.status.lower() }}">{{ acc.status }}</span></td>
+      <td>{{ acc.wallet_balance }}</td>
+      <td>{{ acc.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td><a href="/admin/accounts/{{ acc.id }}" class="btn btn-sm btn-primary">상세</a></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" style="text-align:center;color:#999;">계정 없음</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

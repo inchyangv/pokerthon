@@ -1,0 +1,23 @@
+{% extends "admin/base.html" %}
+{% block title %}Dashboard — Pokerthon Admin{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="num">{{ account_count }}</div>
+    <div class="label">총 계정</div>
+  </div>
+  <div class="stat-card">
+    <div class="num">{{ table_count }}</div>
+    <div class="label">테이블 수</div>
+  </div>
+  <div class="stat-card">
+    <div class="num">{{ total_chips }}</div>
+    <div class="label">총 발행 칩</div>
+  </div>
+</div>
+<div style="display:flex;gap:1rem;">
+  <a href="/admin/accounts" class="btn btn-primary">계정 관리</a>
+  <a href="/admin/tables" class="btn btn-primary">테이블 관리</a>
+</div>
+{% endblock %}
