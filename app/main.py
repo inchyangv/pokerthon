@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.api.admin.accounts import router as admin_accounts_router
+from app.api.admin.bots import router as admin_bots_router
 from app.api.admin.chips import router as admin_chips_router
 from app.api.admin.tables import router as admin_tables_router
 from app.api.admin.views import router as admin_views_router
@@ -60,6 +61,7 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(admin_views_router)
 app.include_router(health_router)
 app.include_router(admin_accounts_router)
+app.include_router(admin_bots_router)
 app.include_router(admin_credentials_router)
 app.include_router(admin_chips_router)
 app.include_router(admin_tables_router)
