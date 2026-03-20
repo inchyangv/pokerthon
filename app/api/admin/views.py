@@ -252,6 +252,51 @@ async def account_detail(
 
 
 # ---------------------------------------------------------------------------
+# Nickname rename
+# ---------------------------------------------------------------------------
+
+@router.post("/accounts/{account_id}/rename-form")
+async def rename_account_ui(
+    request: Request,
+    account_id: int,
+    nickname: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+):
+    if not _is_authenticated(request):
+        return _redirect_login()
+
+    from app.services.account_service import rename_account
+    try:
+        await rename_account(session, account_id, nickname.strip())
+    except (LookupError, ValueError) as e:
+        return RedirectResponse(url=f"/admin/accounts/{account_id}?error={e}", status_code=302)
+
+    return RedirectResponse(url=f"/admin/accounts/{account_id}", status_code=302)
+
+
+# ---------------------------------------------------------------------------
+# Account delete
+# ---------------------------------------------------------------------------
+
+@router.post("/accounts/{account_id}/delete-form")
+async def delete_account_ui(
+    request: Request,
+    account_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    if not _is_authenticated(request):
+        return _redirect_login()
+
+    from app.services.account_service import delete_account
+    try:
+        await delete_account(session, account_id)
+    except LookupError as e:
+        return RedirectResponse(url=f"/admin/accounts?error={e}", status_code=302)
+
+    return RedirectResponse(url="/admin/accounts", status_code=302)
+
+
+# ---------------------------------------------------------------------------
 # Credentials
 # ---------------------------------------------------------------------------
 

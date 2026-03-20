@@ -57,6 +57,7 @@
           <button class="btn btn-sm btn-primary" onclick="openSeatModal({{ b.bot_id }})">착석</button>
         {% endif %}
         <button class="btn btn-sm btn-danger" onclick="deactivateBot({{ b.bot_id }})">비활성화</button>
+        <button class="btn btn-sm" style="background:#7f1d1d;color:#fff;" onclick="deleteBot({{ b.account_id }}, '{{ b.display_name }}')">삭제</button>
       {% endif %}
     </td>
   </tr>
@@ -181,6 +182,13 @@
     const res = await fetch(`/admin/bots/${botId}`, {method: 'DELETE', headers});
     if (res.ok) location.reload();
     else alert('비활성화 실패');
+  }
+
+  async function deleteBot(accountId, name) {
+    if (!confirm(`${name} 봇을 영구 삭제합니까? 모든 기록이 삭제됩니다.`)) return;
+    const res = await fetch(`/admin/accounts/${accountId}/delete-form`, {method: 'POST', headers});
+    if (res.ok || res.redirected) location.reload();
+    else alert('삭제 실패');
   }
 
   function openChipModal(accountId, name, balance) {

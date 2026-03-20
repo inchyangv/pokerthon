@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
 from app.schemas.account import AccountCreate, AccountResponse
-from app.services.account_service import create_account, get_account, list_accounts
+from app.services.account_service import create_account, delete_account, get_account, list_accounts, rename_account
 
 router = APIRouter(prefix="/admin/accounts", tags=["admin-accounts"])
 
@@ -28,3 +29,32 @@ async def get_account_endpoint(account_id: int, session: AsyncSession = Depends(
     if not account:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Account not found"})
     return account
+
+
+class RenameBody(BaseModel):
+    nickname: str
+
+
+@router.patch("/{account_id}/nickname", response_model=AccountResponse)
+async def rename_account_endpoint(
+    account_id: int,
+    body: RenameBody,
+    session: AsyncSession = Depends(get_session),
+):
+    try:
+        return await rename_account(session, account_id, body.nickname.strip())
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": str(e)})
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail={"code": "CONFLICT", "message": str(e)})
+
+
+@router.delete("/{account_id}", status_code=204)
+async def delete_account_endpoint(
+    account_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    try:
+        await delete_account(session, account_id)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": str(e)})

@@ -1,7 +1,14 @@
 {% extends "admin/base.html" %}
 {% block title %}{{ account.nickname }} — Pokerthon Admin{% endblock %}
 {% block content %}
-<a href="/admin/accounts" style="color:#3498db;">← 계정 목록</a>
+<div style="display:flex;align-items:center;gap:1rem;margin-bottom:.5rem;flex-wrap:wrap;">
+  <a href="/admin/accounts" style="color:#3498db;">← 계정 목록</a>
+  <form method="post" action="/admin/accounts/{{ account.id }}/delete-form"
+        style="margin-left:auto;"
+        onsubmit="return confirm('{{ account.nickname }} 계정을 영구 삭제합니까? 모든 기록이 삭제됩니다.');">
+    <button type="submit" class="btn btn-danger btn-sm">계정 삭제</button>
+  </form>
+</div>
 <h1>{{ account.nickname }}</h1>
 <div class="grid-2">
   <!-- 계정 정보 + API 키 -->
@@ -12,6 +19,18 @@
       <p><strong>상태:</strong> <span class="badge badge-{{ account.status.lower() }}">{{ account.status }}</span></p>
       <p><strong>지갑 잔액:</strong> {{ account.wallet_balance }} 칩</p>
       <p><strong>현재 테이블:</strong> {{ current_table_no or '—' }}</p>
+    </div>
+
+    <div class="card">
+      <h2>닉네임 변경</h2>
+      <form method="post" action="/admin/accounts/{{ account.id }}/rename-form"
+            style="display:flex;gap:0.5rem;align-items:flex-end;">
+        <div class="form-group" style="flex:1;margin:0;">
+          <label>새 닉네임</label>
+          <input type="text" name="nickname" value="{{ account.nickname }}" required maxlength="64">
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">변경</button>
+      </form>
     </div>
 
     <div class="card">
