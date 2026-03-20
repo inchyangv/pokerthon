@@ -1,0 +1,123 @@
+{% extends "viewer/base.html" %}
+{% block title %}리더보드 — Pokerthon{% endblock %}
+{% block content %}
+
+<h1>리더보드</h1>
+
+<!-- Summary cards -->
+<div class="stats-grid" id="summaryCards">
+  <div class="stat-card">
+    <div class="num" id="humanCount">-</div>
+    <div class="label">사람 플레이어</div>
+  </div>
+  <div class="stat-card">
+    <div class="num" id="botCount">-</div>
+    <div class="label">봇</div>
+  </div>
+  <div class="stat-card">
+    <div class="num" id="totalHands">-</div>
+    <div class="label">총 핸드 수</div>
+  </div>
+</div>
+
+<!-- Filters -->
+<div style="display:flex;gap:.75rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap;">
+  <span>정렬:</span>
+  <a href="/viewer/leaderboard?sort_by=chips" class="btn btn-secondary" id="sort-chips">총 칩</a>
+  <a href="/viewer/leaderboard?sort_by=profit" class="btn btn-secondary" id="sort-profit">수익</a>
+  <a href="/viewer/leaderboard?sort_by=win_rate" class="btn btn-secondary" id="sort-win_rate">승률</a>
+  <a href="/viewer/leaderboard?sort_by=hands_played" class="btn btn-secondary" id="sort-hands_played">핸드 수</a>
+  <span style="margin-left:auto;">
+    <button id="toggleBots" class="btn btn-secondary" onclick="toggleBots()">봇 숨기기</button>
+  </span>
+</div>
+
+<!-- Leaderboard table -->
+<table id="lbTable">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>닉네임</th>
+      <th>타입</th>
+      <th>총 칩</th>
+      <th>수익</th>
+      <th class="hide-mobile">핸드 수</th>
+      <th>승률</th>
+      <th class="hide-mobile">최대 팟</th>
+      <th class="hide-mobile">테이블</th>
+    </tr>
+  </thead>
+  <tbody id="lbBody">
+    {% for item in items %}
+    <tr class="{% if item.is_bot %}bot-row{% else %}human-row{% endif %}">
+      <td>
+        {% if item.rank == 1 %}<span class="rank-gold">🥇 1</span>
+        {% elif item.rank == 2 %}<span class="rank-silver">🥈 2</span>
+        {% elif item.rank == 3 %}<span class="rank-bronze">🥉 3</span>
+        {% else %}<strong>{{ item.rank }}</strong>{% endif %}
+      </td>
+      <td>
+        {{ item.nickname }}
+        {% if item.is_bot %}🤖{% endif %}
+      </td>
+      <td>
+        {% if item.is_bot %}
+          <span class="badge badge-tag">봇</span>
+        {% else %}
+          <span class="badge" style="background:#546e7a;">사람</span>
+        {% endif %}
+      </td>
+      <td><strong>{{ item.total_chips }}</strong></td>
+      <td style="color:{% if item.total_profit >= 0 %}#4caf50{% else %}#e53935{% endif %}">
+        {{ '+' if item.total_profit >= 0 else '' }}{{ item.total_profit }}
+      </td>
+      <td class="hide-mobile">{{ item.hands_played }}</td>
+      <td>{{ '%.1f'|format(item.win_rate * 100) }}%</td>
+      <td class="hide-mobile">{{ item.biggest_pot_won }}</td>
+      <td class="hide-mobile">
+        {% if item.current_table %}
+          <a href="/viewer/tables/{{ item.current_table }}">{{ item.current_table }}</a>
+        {% else %}-{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const sortBy = "{{ sort_by }}";
+
+  // Highlight active sort button
+  const sortBtn = document.getElementById('sort-' + sortBy);
+  if (sortBtn) {
+    sortBtn.style.background = 'var(--accent)';
+    sortBtn.style.color = '#000';
+  }
+
+  // Preserve sort_by when toggling bots
+  let showBots = true;
+  function toggleBots() {
+    showBots = !showBots;
+    document.querySelectorAll('.bot-row').forEach(r => {
+      r.style.display = showBots ? '' : 'none';
+    });
+    document.getElementById('toggleBots').textContent = showBots ? '봇 숨기기' : '봇 보이기';
+  }
+
+  // Stats (from current data)
+  const rows = document.querySelectorAll('#lbBody tr');
+  let humans = 0, bots = 0, totalHands = 0;
+  rows.forEach(r => {
+    if (r.classList.contains('bot-row')) bots++;
+    else humans++;
+  });
+  document.getElementById('humanCount').textContent = humans;
+  document.getElementById('botCount').textContent = bots;
+
+  // Auto-refresh every 60s
+  setInterval(() => location.reload(), 60000);
+</script>
+{% endblock %}

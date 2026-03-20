@@ -1,7 +1,7 @@
 """Spectator viewer routes — public, no auth required."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
@@ -64,4 +64,21 @@ async def lobby(request: Request, session: AsyncSession = Depends(get_session)):
     return templates.TemplateResponse(request, "viewer/lobby.html", {
         "tables": tables_out,
         "leaderboard": leaderboard,
+    })
+
+
+@router.get("/leaderboard", response_class=HTMLResponse)
+async def leaderboard_page(
+    request: Request,
+    sort_by: str = Query(default="chips"),
+    session: AsyncSession = Depends(get_session),
+):
+    valid_sorts = {"chips", "profit", "win_rate", "hands_played"}
+    if sort_by not in valid_sorts:
+        sort_by = "chips"
+
+    items = await get_leaderboard(session, sort_by=sort_by, limit=200, include_bots=True)
+    return templates.TemplateResponse(request, "viewer/leaderboard.html", {
+        "items": items,
+        "sort_by": sort_by,
     })
