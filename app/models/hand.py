@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -23,8 +23,8 @@ class StreetType(str, enum.Enum):
 class Hand(Base):
     __tablename__ = "hands"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    table_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tables.id"), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    table_id: Mapped[int] = mapped_column(Integer, ForeignKey("tables.id"), nullable=False)
     hand_no: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[HandStatus] = mapped_column(Enum(HandStatus), default=HandStatus.IN_PROGRESS, nullable=False)
     button_seat_no: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -49,9 +49,9 @@ class Hand(Base):
 class HandPlayer(Base):
     __tablename__ = "hand_players"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    hand_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("hands.id"), nullable=False)
-    account_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("accounts.id"), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    hand_id: Mapped[int] = mapped_column(Integer, ForeignKey("hands.id"), nullable=False)
+    account_id: Mapped[int] = mapped_column(Integer, ForeignKey("accounts.id"), nullable=False)
     seat_no: Mapped[int] = mapped_column(Integer, nullable=False)
     hole_cards_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
     starting_stack: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -68,11 +68,11 @@ class HandPlayer(Base):
 class HandAction(Base):
     __tablename__ = "hand_actions"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    hand_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("hands.id"), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    hand_id: Mapped[int] = mapped_column(Integer, ForeignKey("hands.id"), nullable=False)
     seq: Mapped[int] = mapped_column(Integer, nullable=False)
     street: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    actor_account_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    actor_account_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     actor_seat_no: Mapped[int | None] = mapped_column(Integer, nullable=True)
     action_type: Mapped[str] = mapped_column(String(32), nullable=False)
     amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -87,8 +87,8 @@ class HandAction(Base):
 class HandResult(Base):
     __tablename__ = "hand_results"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    hand_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("hands.id"), unique=True, nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    hand_id: Mapped[int] = mapped_column(Integer, ForeignKey("hands.id"), unique=True, nullable=False)
     result_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
@@ -98,7 +98,7 @@ class HandResult(Base):
 class TableSnapshot(Base):
     __tablename__ = "table_snapshots"
 
-    table_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tables.id"), primary_key=True)
+    table_id: Mapped[int] = mapped_column(Integer, ForeignKey("tables.id"), primary_key=True)
     version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     snapshot_json: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Enum, Integer, String, func
+from sqlalchemy import DateTime, Enum, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -15,7 +15,7 @@ class AccountStatus(str, enum.Enum):
 class Account(Base):
     __tablename__ = "accounts"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     nickname: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     status: Mapped[AccountStatus] = mapped_column(Enum(AccountStatus), default=AccountStatus.ACTIVE, nullable=False)
     wallet_balance: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
