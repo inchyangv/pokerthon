@@ -243,6 +243,23 @@ td a:hover { text-decoration: underline; }
 .playing-card.spades,  .playing-card.clubs   { color: #111; }
 .playing-card.empty   { background: rgba(255,255,255,.15); color: rgba(255,255,255,.4); border: 1px dashed rgba(255,255,255,.3); }
 
+/* Small cards (hand detail hole cards) */
+.playing-card.small {
+  width: 32px; height: 46px;
+  font-size: .75rem;
+  border-radius: 4px;
+}
+
+/* Mini cards (hand list board) */
+.playing-card.mini {
+  width: 24px; height: 34px;
+  font-size: .6rem;
+  border-radius: 3px;
+  padding: 0;
+}
+
+.board-cards-inline { display: inline-flex; gap: .2rem; vertical-align: middle; }
+
 .pot-info { color: #fff; font-size: .9rem; margin-top: .4rem; }
 
 /* ── Seat positions around table (9 seats) ── */

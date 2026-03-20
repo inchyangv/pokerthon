@@ -1,5 +1,16 @@
 {% extends "viewer/base.html" %}
 {% block title %}핸드 히스토리 — 테이블 {{ table_no }}{% endblock %}
+
+{% macro mini_card(c) %}
+{% if c %}
+  {% set suit = c[-1] %}
+  {% set rank = c[:-1] %}
+  {% set suit_cls = {'h':'hearts','d':'diamonds','s':'spades','c':'clubs'}.get(suit, '') %}
+  {% set suit_sym = {'h':'♥','d':'♦','s':'♠','c':'♣'}.get(suit, suit) %}
+  <div class="playing-card mini {{ suit_cls }}">{{ rank }}{{ suit_sym }}</div>
+{% endif %}
+{% endmacro %}
+
 {% block content %}
 
 <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;">
@@ -14,8 +25,8 @@
       <th>Hand #</th>
       <th>보드</th>
       <th>팟</th>
-      <th>시작</th>
-      <th>종료</th>
+      <th class="hide-mobile">시작</th>
+      <th class="hide-mobile">종료</th>
       <th></th>
     </tr>
   </thead>
@@ -23,10 +34,18 @@
   {% for h in hands %}
   <tr>
     <td><strong>#{{ h.hand_no }}</strong></td>
-    <td style="font-family:monospace;">{{ h.board | join(' ') or '-' }}</td>
-    <td>{{ h.total_pot or '-' }}</td>
-    <td style="font-size:.8rem;color:var(--text-muted);">{{ h.started_at or '-' }}</td>
-    <td style="font-size:.8rem;color:var(--text-muted);">{{ h.finished_at or '-' }}</td>
+    <td>
+      <div class="board-cards-inline">
+        {% if h.board %}
+          {% for c in h.board %}{{ mini_card(c) }}{% endfor %}
+        {% else %}
+          <span style="color:var(--text-muted);font-size:.8rem;">-</span>
+        {% endif %}
+      </div>
+    </td>
+    <td class="chips">{{ "{:,}".format(h.total_pot) if h.total_pot else '-' }}</td>
+    <td class="hide-mobile" style="font-size:.8rem;color:var(--text-muted);">{{ h.started_at or '-' }}</td>
+    <td class="hide-mobile" style="font-size:.8rem;color:var(--text-muted);">{{ h.finished_at or '-' }}</td>
     <td><a href="/viewer/tables/{{ table_no }}/hands/{{ h.hand_id }}">상세 →</a></td>
   </tr>
   {% endfor %}

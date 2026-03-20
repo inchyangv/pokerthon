@@ -1,5 +1,18 @@
 {% extends "viewer/base.html" %}
 {% block title %}핸드 #{{ hand.hand_no }} — 테이블 {{ table_no }}{% endblock %}
+
+{% macro render_card(c, size='') %}
+{% if c %}
+  {% set suit = c[-1] %}
+  {% set rank = c[:-1] %}
+  {% set suit_cls = {'h':'hearts','d':'diamonds','s':'spades','c':'clubs'}.get(suit, '') %}
+  {% set suit_sym = {'h':'♥','d':'♦','s':'♠','c':'♣'}.get(suit, suit) %}
+  <div class="playing-card {{ suit_cls }} {{ size }}">{{ rank }}{{ suit_sym }}</div>
+{% else %}
+  <div class="playing-card empty {{ size }}">?</div>
+{% endif %}
+{% endmacro %}
+
 {% block content %}
 
 <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;">
@@ -9,16 +22,20 @@
 
 <!-- Hand Summary -->
 <div class="card" style="margin-bottom:1rem;">
-  <div style="display:flex;gap:2rem;flex-wrap:wrap;">
-    <div><strong>테이블</strong> {{ table_no }}</div>
-    <div><strong>시작</strong> {{ hand.started_at or '-' }}</div>
-    <div><strong>종료</strong> {{ hand.finished_at or '-' }}</div>
+  <div style="display:flex;gap:2rem;flex-wrap:wrap;margin-bottom:.75rem;">
+    <div><span style="color:var(--text-muted);font-size:.8rem;">테이블</span><br><strong>{{ table_no }}</strong></div>
+    <div><span style="color:var(--text-muted);font-size:.8rem;">시작</span><br><strong>{{ hand.started_at or '-' }}</strong></div>
+    <div><span style="color:var(--text-muted);font-size:.8rem;">종료</span><br><strong>{{ hand.finished_at or '-' }}</strong></div>
   </div>
-  <div style="margin-top:.75rem;">
-    <strong>보드</strong>
-    <span style="font-family:monospace;font-size:1.1rem;margin-left:.5rem;">
-      {{ hand.board | join(' ') or '(없음)' }}
-    </span>
+  <div>
+    <span style="color:var(--text-muted);font-size:.8rem;display:block;margin-bottom:.4rem;">보드</span>
+    <div class="board-cards" style="justify-content:flex-start;">
+      {% if hand.board %}
+        {% for c in hand.board %}{{ render_card(c) }}{% endfor %}
+      {% else %}
+        <span style="color:var(--text-muted);">(없음)</span>
+      {% endif %}
+    </div>
   </div>
 </div>
 
@@ -27,19 +44,30 @@
   <h2>참가자</h2>
   <table>
     <thead>
-      <tr><th>좌석</th><th>닉네임</th><th>시작 스택</th><th>종료 스택</th><th>손익</th><th>홀카드</th></tr>
+      <tr><th>좌석</th><th>닉네임</th><th>시작</th><th>종료</th><th>손익</th><th>홀카드</th></tr>
     </thead>
     <tbody>
     {% for p in players %}
     <tr>
       <td>{{ p.seat_no }}</td>
-      <td>{{ p.nickname or '?' }}{% if p.folded %} <span style="color:var(--text-muted);">(폴드)</span>{% endif %}</td>
-      <td>{{ p.starting_stack }}</td>
-      <td>{{ p.ending_stack }}</td>
-      <td style="color:{% if p.profit >= 0 %}#4caf50{% else %}#e53935{% endif %}">
-        {{ '+' if p.profit >= 0 else '' }}{{ p.profit }}
+      <td>
+        {{ p.nickname or '?' }}
+        {% if p.folded %}<span style="color:var(--text-muted);font-size:.78rem;"> 폴드</span>{% endif %}
       </td>
-      <td style="font-family:monospace;">{{ p.hole_cards | join(' ') if p.hole_cards else '-' }}</td>
+      <td class="chips">{{ "{:,}".format(p.starting_stack) }}</td>
+      <td class="chips">{{ "{:,}".format(p.ending_stack) }}</td>
+      <td style="color:{% if p.profit >= 0 %}#4caf50{% else %}#e53935{% endif %};font-family:'JetBrains Mono',monospace;">
+        {{ '+' if p.profit >= 0 else '' }}{{ "{:,}".format(p.profit) }}
+      </td>
+      <td>
+        <div class="board-cards-inline">
+          {% if p.hole_cards %}
+            {% for c in p.hole_cards %}{{ render_card(c, 'small') }}{% endfor %}
+          {% else %}
+            <span style="color:var(--text-muted);">-</span>
+          {% endif %}
+        </div>
+      </td>
     </tr>
     {% endfor %}
     </tbody>
@@ -50,7 +78,7 @@
 {% if result %}
 <div class="card" style="margin-bottom:1rem;">
   <h2>팟 분배</h2>
-  <p>승자 좌석: {{ result.winner_seats | join(', ') or '-' }}</p>
+  <p>승자 좌석: <strong>{{ result.winner_seats | join(', ') or '-' }}</strong></p>
 </div>
 {% endif %}
 
@@ -58,20 +86,33 @@
 <div class="card">
   <h2>액션 타임라인</h2>
   {% set streets = ['preflop', 'flop', 'turn', 'river', 'showdown'] %}
+  {% set street_labels = {'preflop':'프리플랍','flop':'플랍','turn':'턴','river':'리버','showdown':'쇼다운'} %}
+  {% set action_cls = {'FOLD':'action-fold','CHECK':'action-check','CALL':'action-call','RAISE':'action-raise','BET':'action-raise','ALL_IN':'action-allin'} %}
+  {% set action_labels = {'FOLD':'폴드','CHECK':'체크','CALL':'콜','RAISE':'레이즈','BET':'베팅','ALL_IN':'올인','POST_SB':'SB 포스트','POST_BB':'BB 포스트','TIMEOUT_FOLD':'⏰ 타임아웃 폴드'} %}
+  {% set system_labels = {'HAND_STARTED':'✦ 핸드 시작','HAND_FINISHED':'✦ 핸드 종료','DEAL_FLOP':'— 플랍 딜','DEAL_TURN':'— 턴 딜','DEAL_RIVER':'— 리버 딜'} %}
+
   {% for street in streets %}
     {% set street_actions = actions | selectattr('street', 'equalto', street) | list %}
     {% if street_actions %}
     <div style="margin-bottom:1rem;">
-      <h3 style="font-size:1rem;color:var(--accent);text-transform:uppercase;margin-bottom:.5rem;">{{ street }}</h3>
-      {% for a in street_actions %}
-      <div class="action-item {% if a.is_system %}action-system{% else %}action-player{% endif %}">
-        {% if a.is_system %}
-          [시스템] {{ a.action_type }}{% if a.amount %} {{ a.amount }}{% endif %}
-        {% else %}
-          [좌석 {{ a.actor_seat_no }}] {{ a.action_type }}{% if a.amount %} {{ a.amount }}{% endif %}
-        {% endif %}
+      <h3 style="font-size:.9rem;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.4rem;border-bottom:1px solid var(--border);padding-bottom:.3rem;">
+        {{ street_labels.get(street, street) }}
+      </h3>
+      <div class="action-feed" style="max-height:none;border:none;background:none;padding:0;">
+        {% for a in street_actions %}
+          {% if a.is_system %}
+            <div class="action-item action-system-event">
+              {{ system_labels.get(a.action_type, a.action_type) }}
+            </div>
+          {% else %}
+            <div class="action-item action-player {{ action_cls.get(a.action_type, '') }}">
+              <strong>좌석 {{ a.actor_seat_no }}</strong>
+              &nbsp;{{ action_labels.get(a.action_type, a.action_type) }}
+              {% if a.amount %}<span class="chips"> {{ "{:,}".format(a.amount) }}</span>{% endif %}
+            </div>
+          {% endif %}
+        {% endfor %}
       </div>
-      {% endfor %}
     </div>
     {% endif %}
   {% endfor %}
