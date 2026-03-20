@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import secrets
 
 
@@ -15,4 +16,4 @@ def hash_secret(secret: str) -> str:
 
 
 def verify_secret(secret: str, secret_hash: str) -> bool:
-    return hash_secret(secret) == secret_hash
+    return hmac.compare_digest(hash_secret(secret), secret_hash)

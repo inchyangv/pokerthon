@@ -35,6 +35,13 @@ async def client(db_engine):
             yield session
 
     app.dependency_overrides[get_session] = override_get_session
+
+    # Clear rate-limit and session state between tests
+    from app.middleware.rate_limit import _clear_buckets
+    from app.api.admin.views import _active_sessions
+    _clear_buckets()
+    _active_sessions.clear()
+
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()

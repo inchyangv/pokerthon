@@ -2,6 +2,7 @@
 HMAC auth is implemented as a FastAPI Dependency (not middleware) so it works
 with the test session factory override via dependency_overrides.
 """
+import hmac as _hmac
 import time
 from datetime import datetime, timezone
 
@@ -52,7 +53,7 @@ async def require_hmac_auth(request: Request, session: AsyncSession = Depends(ge
         raise HTTPException(status_code=401, detail={"code": "UNAUTHORIZED", "message": "API key is revoked"})
 
     expected_sig = compute_signature(cred.secret_hash, canonical)
-    if signature != expected_sig:
+    if not _hmac.compare_digest(signature, expected_sig):
         raise HTTPException(status_code=401, detail={"code": "UNAUTHORIZED", "message": "Invalid signature"})
 
     nonce_record = ApiNonce(api_key=api_key, nonce=nonce, timestamp=ts)

@@ -48,8 +48,9 @@
     <td>{{ b.table_no or '-' }}</td>
     <td>{{ b.seat_no or '-' }}</td>
     <td>{{ b.stack or '-' }}</td>
-    <td>
+    <td style="white-space:nowrap;">
       {% if b.is_active %}
+        <button class="btn btn-sm" style="background:#f59e0b;color:#fff;" onclick="openChipModal({{ b.account_id }}, '{{ b.display_name }}', {{ b.wallet_balance }})">칩 관리</button>
         {% if b.seat_no %}
           <button class="btn btn-sm btn-secondary" onclick="unseatBot({{ b.bot_id }})">이석</button>
         {% else %}
@@ -90,8 +91,31 @@
   </div>
 </div>
 
+<!-- 칩 관리 모달 -->
+<div id="chipModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:100;align-items:center;justify-content:center;">
+  <div style="background:white;border-radius:8px;padding:2rem;min-width:340px;">
+    <h3 id="chipModalTitle">칩 관리</h3>
+    <input type="hidden" id="chipAccountId">
+    <p style="margin-bottom:1rem;">현재 잔액: <strong id="chipCurrentBalance">0</strong></p>
+    <div style="margin-bottom:1rem;">
+      <label>금액</label>
+      <input type="number" id="chipAmount" min="1" placeholder="금액 입력" style="width:100%;" required>
+    </div>
+    <div style="margin-bottom:1rem;">
+      <label>사유 (선택)</label>
+      <input type="text" id="chipReason" placeholder="admin_grant" style="width:100%;">
+    </div>
+    <div style="display:flex;gap:.5rem;">
+      <button class="btn btn-primary" onclick="submitChip('grant')">지급</button>
+      <button class="btn btn-danger" onclick="submitChip('deduct')">차감</button>
+      <button class="btn btn-secondary" onclick="closeChipModal()">취소</button>
+    </div>
+    <div id="chipResult" style="margin-top:.5rem;"></div>
+  </div>
+</div>
+
 <script>
-  const headers = {'Content-Type': 'application/json', 'Authorization': 'Bearer changeme'};
+  const headers = {'Content-Type': 'application/json'};
 
   document.getElementById('createBotForm').addEventListener('submit', async e => {
     e.preventDefault();
@@ -157,6 +181,42 @@
     const res = await fetch(`/admin/bots/${botId}`, {method: 'DELETE', headers});
     if (res.ok) location.reload();
     else alert('비활성화 실패');
+  }
+
+  function openChipModal(accountId, name, balance) {
+    document.getElementById('chipAccountId').value = accountId;
+    document.getElementById('chipModalTitle').textContent = `칩 관리 — ${name}`;
+    document.getElementById('chipCurrentBalance').textContent = balance;
+    document.getElementById('chipAmount').value = '';
+    document.getElementById('chipReason').value = '';
+    document.getElementById('chipResult').innerHTML = '';
+    document.getElementById('chipModal').style.display = 'flex';
+  }
+
+  function closeChipModal() {
+    document.getElementById('chipModal').style.display = 'none';
+  }
+
+  async function submitChip(action) {
+    const accountId = document.getElementById('chipAccountId').value;
+    const amount = parseInt(document.getElementById('chipAmount').value);
+    const reason = document.getElementById('chipReason').value || `admin_${action}`;
+    if (!amount || amount <= 0) {
+      document.getElementById('chipResult').innerHTML = '<span style="color:red">금액을 입력하세요.</span>';
+      return;
+    }
+    const res = await fetch(`/admin/accounts/${accountId}/${action}`, {
+      method: 'POST', headers,
+      body: JSON.stringify({amount, reason})
+    });
+    const data = await res.json();
+    const el = document.getElementById('chipResult');
+    if (res.ok) {
+      el.innerHTML = `<span style="color:green">${action === 'grant' ? '지급' : '차감'} 완료 — 잔액: ${data.wallet_balance}</span>`;
+      setTimeout(() => { closeChipModal(); location.reload(); }, 800);
+    } else {
+      el.innerHTML = `<span style="color:red">${data.detail?.message || '오류'}</span>`;
+    }
   }
 </script>
 {% endblock %}

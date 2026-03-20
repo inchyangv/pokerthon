@@ -1,6 +1,8 @@
 """Admin web UI — HTML views for accounts, credentials, chips, tables, and games."""
 from __future__ import annotations
 
+import secrets
+
 from fastapi import APIRouter, Depends, Form, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -22,11 +24,13 @@ router = APIRouter(prefix="/admin", tags=["admin-ui"])
 templates = Jinja2Templates(directory="app/templates")
 
 _SESSION_COOKIE = "admin_session"
-_SESSION_VALUE = "authenticated"
+# Server-side session store: token -> True
+_active_sessions: set[str] = set()
 
 
 def _is_authenticated(request: Request) -> bool:
-    return request.cookies.get(_SESSION_COOKIE) == _SESSION_VALUE
+    token = request.cookies.get(_SESSION_COOKIE)
+    return token is not None and token in _active_sessions
 
 
 def _is_api_request(request: Request) -> bool:
@@ -53,15 +57,21 @@ async def login_page(request: Request):
 
 @router.post("/login", response_class=HTMLResponse)
 async def login_submit(request: Request, password: str = Form(...)):
-    if password == settings.ADMIN_PASSWORD:
+    if secrets.compare_digest(password, settings.ADMIN_PASSWORD):
+        token = secrets.token_urlsafe(32)
+        _active_sessions.add(token)
+        is_https = request.url.scheme == "https"
         response = RedirectResponse(url="/admin/", status_code=302)
-        response.set_cookie(_SESSION_COOKIE, _SESSION_VALUE, httponly=True, samesite="lax")
+        response.set_cookie(_SESSION_COOKIE, token, httponly=True, samesite="strict" if is_https else "lax", secure=is_https)
         return response
     return templates.TemplateResponse(request, "admin/login.html", {"error": "비밀번호가 틀렸습니다."})
 
 
 @router.get("/logout")
-async def logout():
+async def logout(request: Request):
+    token = request.cookies.get(_SESSION_COOKIE)
+    if token:
+        _active_sessions.discard(token)
     response = RedirectResponse(url="/admin/login", status_code=302)
     response.delete_cookie(_SESSION_COOKIE)
     return response

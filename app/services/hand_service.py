@@ -17,9 +17,23 @@ from app.models.table import SeatStatus, Table, TableSeat
 
 async def get_active_hand(session: AsyncSession, table_id: int) -> Hand | None:
     result = await session.execute(
-        select(Hand).where(Hand.table_id == table_id, Hand.status == HandStatus.IN_PROGRESS)
+        select(Hand)
+        .where(Hand.table_id == table_id, Hand.status == HandStatus.IN_PROGRESS)
+        .order_by(Hand.id.desc())
     )
-    return result.scalar_one_or_none()
+    hands = list(result.scalars().all())
+    if not hands:
+        return None
+    # If multiple active hands exist (shouldn't happen), cancel extras
+    if len(hands) > 1:
+        import logging
+        logging.getLogger(__name__).warning(
+            "Multiple active hands for table_id=%d, cancelling duplicates", table_id
+        )
+        for extra in hands[1:]:
+            extra.status = HandStatus.FINISHED
+        await session.commit()
+    return hands[0]
 
 
 async def _next_seq(session: AsyncSession, hand_id: int) -> int:

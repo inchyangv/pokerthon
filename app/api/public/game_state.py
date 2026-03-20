@@ -26,6 +26,7 @@ class PublicSeatState(BaseModel):
     folded: bool
     all_in: bool
     seat_status: str
+    round_contribution: int  # chips committed this street (0 when no hand)
 
 
 class PublicGameState(BaseModel):
@@ -36,6 +37,8 @@ class PublicGameState(BaseModel):
     board: list[str]
     seats: list[PublicSeatState]
     button_seat_no: int | None
+    small_blind_seat_no: int | None
+    big_blind_seat_no: int | None
     action_seat_no: int | None
     current_bet: int
     pot_view: PotView
@@ -81,6 +84,7 @@ async def get_public_game_state(
                 folded=False,
                 all_in=False,
                 seat_status=s.seat_status.value,
+                round_contribution=0,
             )
             for s in sorted(seats, key=lambda x: x.seat_no)
         ]
@@ -92,6 +96,8 @@ async def get_public_game_state(
             board=[],
             seats=seat_states,
             button_seat_no=None,
+            small_blind_seat_no=None,
+            big_blind_seat_no=None,
             action_seat_no=None,
             current_bet=0,
             pot_view=PotView(main_pot=0, side_pots=[], uncalled_return=None),
@@ -115,6 +121,7 @@ async def get_public_game_state(
             folded=hp.folded if hp else False,
             all_in=hp.all_in if hp else False,
             seat_status=s.seat_status.value,
+            round_contribution=hp.round_contribution if hp else 0,
         ))
 
     pot_input = [
@@ -141,6 +148,8 @@ async def get_public_game_state(
         board=json.loads(hand.board_json),
         seats=seat_states,
         button_seat_no=hand.button_seat_no,
+        small_blind_seat_no=hand.small_blind_seat_no,
+        big_blind_seat_no=hand.big_blind_seat_no,
         action_seat_no=hand.action_seat_no,
         current_bet=hand.current_bet,
         pot_view=pot_view,

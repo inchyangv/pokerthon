@@ -174,6 +174,48 @@ async def _process_bot_turn(session: AsyncSession, bot_profile: BotProfile) -> N
         await session.commit()
 
 
+async def _auto_start_hands() -> None:
+    """Start hands on tables with >= 2 seated players but no active hand."""
+    from app.models.table import Table, TableStatus
+    from app.services.hand_service import get_active_hand, start_hand
+    from app.core.table_lock import get_table_lock
+
+    async with async_session_factory() as session:
+        tables_result = await session.execute(
+            select(Table).where(Table.status == TableStatus.OPEN)
+        )
+        tables = list(tables_result.scalars().all())
+
+    for table in tables:
+        try:
+            async with async_session_factory() as session:
+                active = await get_active_hand(session, table.id)
+                if active is not None:
+                    continue
+
+                seats_result = await session.execute(
+                    select(TableSeat).where(TableSeat.table_id == table.id)
+                )
+                eligible = [
+                    s for s in seats_result.scalars().all()
+                    if s.seat_status in (SeatStatus.SEATED, SeatStatus.LEAVING_AFTER_HAND)
+                    and s.stack > 0
+                ]
+                if len(eligible) < 2:
+                    continue
+
+                async with get_table_lock(table.table_no):
+                    # Re-check inside lock to prevent duplicates
+                    active_recheck = await get_active_hand(session, table.id)
+                    if active_recheck is not None:
+                        continue
+                    hand = await start_hand(session, table.id)
+                    if hand:
+                        logger.info("Auto-started hand at table %d", table.table_no)
+        except Exception:
+            logger.exception("Error auto-starting hand at table %d", table.table_no)
+
+
 async def bot_runner_loop() -> None:
     """Main bot runner loop. Polls all active bots and processes their turns."""
     if not settings.BOT_ENABLED:
@@ -184,6 +226,9 @@ async def bot_runner_loop() -> None:
 
     while True:
         try:
+            # Auto-start hands on tables with enough players
+            await _auto_start_hands()
+
             async with async_session_factory() as session:
                 # Load all active bot profiles
                 result = await session.execute(

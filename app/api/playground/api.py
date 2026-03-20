@@ -58,8 +58,6 @@ async def sign_endpoint(payload: SignRequest) -> dict[str, Any]:
         },
         "debug": {
             "body_hash": body_hash,
-            "signing_key": signing_key,
-            "canonical_string": canonical,
         },
     }
 
@@ -90,8 +88,6 @@ async def proxy_endpoint(payload: ProxyRequest, request: Request) -> dict[str, A
         url = f"{url}?{qs}"
 
     request_debug = {
-        "canonical_string": canonical,
-        "signing_key": signing_key,
         "body_hash": body_hash,
     }
 

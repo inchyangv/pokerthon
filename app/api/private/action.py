@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -20,13 +21,52 @@ from app.services.hand_service import get_active_hand
 
 router = APIRouter(prefix="/v1/private/tables", tags=["action"])
 
-# In-memory idempotency cache: idempotency_key -> response dict
-_idempotency_cache: dict[str, dict[str, Any]] = {}
+# In-memory idempotency cache: "account_id:key" -> (response, timestamp)
+_IDEMPOTENCY_TTL = 300  # 5 minutes
+_IDEMPOTENCY_MAX = 10000
+_idempotency_cache: dict[str, tuple[dict[str, Any], float]] = {}
+
+
+def _cache_get(account_id: int, key: str) -> dict[str, Any] | None:
+    cache_key = f"{account_id}:{key}"
+    entry = _idempotency_cache.get(cache_key)
+    if entry is None:
+        return None
+    resp, ts = entry
+    if time.monotonic() - ts > _IDEMPOTENCY_TTL:
+        del _idempotency_cache[cache_key]
+        return None
+    return resp
+
+
+def _cache_set(account_id: int, key: str, response: dict[str, Any]) -> None:
+    # Evict expired entries if cache is full
+    if len(_idempotency_cache) >= _IDEMPOTENCY_MAX:
+        now = time.monotonic()
+        expired = [k for k, (_, ts) in _idempotency_cache.items() if now - ts > _IDEMPOTENCY_TTL]
+        for k in expired:
+            del _idempotency_cache[k]
+        # If still full, remove oldest
+        if len(_idempotency_cache) >= _IDEMPOTENCY_MAX:
+            oldest_key = min(_idempotency_cache, key=lambda k: _idempotency_cache[k][1])
+            del _idempotency_cache[oldest_key]
+    _idempotency_cache[f"{account_id}:{key}"] = (response, time.monotonic())
+
+
+from typing import Literal
+
+_ActionType = Literal["FOLD", "CHECK", "CALL", "BET_TO", "RAISE_TO", "ALL_IN"]
 
 
 class ActionPayload(BaseModel):
-    type: str
+    type: _ActionType
     amount: int | None = None
+
+    @property
+    def validated_amount(self) -> int | None:
+        if self.amount is not None and self.amount < 0:
+            raise ValueError("amount must be non-negative")
+        return self.amount
 
 
 class ActionRequest(BaseModel):
@@ -44,14 +84,18 @@ async def submit_action(
     account_id: int = Depends(require_hmac_auth),
 ):
     # Check idempotency before acquiring the lock (fast path)
-    if body.idempotency_key and body.idempotency_key in _idempotency_cache:
-        return _idempotency_cache[body.idempotency_key]
+    if body.idempotency_key:
+        cached = _cache_get(account_id, body.idempotency_key)
+        if cached is not None:
+            return cached
 
     lock = get_table_lock(table_no)
     async with lock:
         # Re-check inside lock (another coroutine may have just processed it)
-        if body.idempotency_key and body.idempotency_key in _idempotency_cache:
-            return _idempotency_cache[body.idempotency_key]
+        if body.idempotency_key:
+            cached = _cache_get(account_id, body.idempotency_key)
+            if cached is not None:
+                return cached
 
         # Load table
         table_result = await session.execute(select(Table).where(Table.table_no == table_no))
@@ -150,6 +194,6 @@ async def submit_action(
         }
 
         if body.idempotency_key:
-            _idempotency_cache[body.idempotency_key] = response
+            _cache_set(account_id, body.idempotency_key, response)
 
         return response

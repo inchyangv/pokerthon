@@ -2,8 +2,9 @@
 In-memory sliding-window rate limiter (ASGI middleware).
 
 Limits:
-  /v1/private/*  →  15 req/min  keyed by X-API-KEY header
-  /v1/public/*   →  60 req/min  keyed by client IP
+  /v1/private/*   →  15 req/min  keyed by X-API-KEY header
+  /v1/public/*    →  60 req/min  keyed by client IP
+  /admin/login    →  10 req/min  keyed by client IP  (brute-force protection)
 
 No external dependency required (asyncio single-threaded event loop
 guarantees that the deque accesses are safe without locking).
@@ -16,6 +17,7 @@ from collections import defaultdict, deque
 
 PRIVATE_LIMIT = 15   # requests per window
 PUBLIC_LIMIT = 60
+ADMIN_LOGIN_LIMIT = 10
 WINDOW = 60.0        # seconds
 
 # Global sliding-window buckets: rl_key → deque[monotonic timestamp]
@@ -53,7 +55,15 @@ class RateLimitMiddleware:
 
         path: str = scope.get("path", "")
 
-        if path.startswith("/v1/private/"):
+        method: str = scope.get("method", "GET")
+
+        if path == "/admin/login" and method == "POST":
+            client = scope.get("client")
+            ip = client[0] if client else "unknown"
+            rl_key = f"login:{ip}"
+            limit = ADMIN_LOGIN_LIMIT
+
+        elif path.startswith("/v1/private/"):
             headers = {k.lower(): v for k, v in scope.get("headers", [])}
             api_key = headers.get(b"x-api-key", b"").decode("latin-1")
             client = scope.get("client")

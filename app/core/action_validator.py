@@ -32,6 +32,8 @@ def validate_action(
     Returns the effective bet amount (what goes into the pot from this action).
     Raises ActionError on invalid action.
     """
+    if amount is not None and amount < 0:
+        raise ActionError("INVALID_ACTION", "Amount must be non-negative")
     if player.folded:
         raise ActionError("INVALID_ACTION", "Player has already folded")
     if player.all_in:
