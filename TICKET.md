@@ -11,7 +11,7 @@ PROJECT.md 기반 구현 티켓 목록.
 
 # HOTFIX-2 — Rate Limiting
 
-## HF-2: API Rate Limit (slowapi)
+## HF-2: API Rate Limit ✅ 완료
 
 **Goal**: 봇의 과도한 폴링/스팸을 방지하고 서버 안정성을 확보한다.
 
