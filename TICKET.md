@@ -1698,7 +1698,163 @@ PROJECT.md 기반 구현 티켓 목록.
 | | T9.4 | 리더보드 페이지 | T9.1, T9.2 |
 | | T9.5 | 핸드 히스토리 뷰어 | T9.2, T5.3 |
 
-**총 티켓: 38개**
+**총 티켓: 44개** (M10 V1~V6 추가)
+
+---
+
+# M10 — Viewer UX 개선 (카지노 디자인)
+
+관전 페이지를 카지노 분위기에 맞게 시각 개선한다.
+백엔드 변경 없음 — 모든 작업은 HTML 템플릿 / CSS / 클라이언트 JS에 국한된다.
+
+---
+
+## V1: 라이브 테이블 — 비주얼 포커 테이블 전환
+
+**Goal**: `table_live.html`의 좌석 영역을 HTML 테이블에서 타원형 포커 테이블 비주얼로 교체한다.
+
+**Deps**: 없음 (프론트엔드 전용)
+
+**Scope**:
+- `table_live.html`: 좌석 영역을 `.poker-table` 타원 + `.seat-container` 배치로 재구성
+- 보드 카드 5장을 테이블 중앙 `.board-center`에 위치
+- 팟 금액을 중앙 보드 아래 `.pot-info`로 표시
+- 현재 턴 좌석에 glow 애니메이션 (CSS `box-shadow` 펄스)
+- D/SB/BB 마커를 좌석 옆 chip-style 뱃지로 표시
+- 상단 정보(총 팟/현재 베팅/스트리트/타이머)를 compact info-bar로 통합
+- JS `updateSeats()` 를 9개 좌석 타원 위치에 맞게 수정
+- `viewer.css`: 9개 좌석 `.seat-pos-1` ~ `.seat-pos-9` 절대 위치 정의, 모바일 스케일 대응
+
+**AC**:
+- [ ] 좌석이 타원형 테이블 주변에 배치됨 (HTML `<table>` 제거)
+- [ ] 보드 카드 5장이 테이블 중앙에 렌더링됨
+- [ ] 현재 턴 좌석에 녹색 glow 표시
+- [ ] D/SB/BB 마커가 해당 좌석 옆에 표시됨
+- [ ] 모바일(< 750px)에서 테이블 축소 및 좌석 재배치
+
+**Commit**: `feat(viewer): visual poker table layout for live view`
+
+---
+
+## V2: 액션 피드 — 자연어 변환 및 색상 코딩
+
+**Goal**: 개발자 로그 형태의 액션 피드를 사람이 읽기 쉬운 자연어 + 색상 코딩으로 변환한다.
+
+**Deps**: V1 (좌석 닉네임 매핑 구조 공유)
+
+**Scope**:
+- `table_live.html` JS: 액션 타입 → 한국어 자연어 매핑 함수 추가
+  - `FOLD` → "폴드", `CHECK` → "체크", `CALL N` → "콜 N", `RAISE N` → "레이즈 N", `ALL_IN N` → "올인 N"
+  - 시스템: `HAND_STARTED` → "✦ 핸드 시작", `DEAL_FLOP` → "플랍", `DEAL_TURN` → "턴", `DEAL_RIVER` → "리버", `HAND_FINISHED` → "✦ 핸드 종료"
+- 닉네임 표시: `[좌석 1]` → `닉네임` (seat → nickname 맵 공유)
+- 액션별 CSS 클래스: `.action-fold`, `.action-raise`, `.action-call`, `.action-check`, `.action-allin`, `.action-system-event`
+- `viewer.css`에 각 클래스 색상 추가 (폴드 회색, 레이즈 주황, 콜 파랑, 체크 초록, 올인 빨강)
+- `hand_detail.html` 액션 타임라인에도 동일 매핑 적용 (Jinja2 필터 또는 인라인 매크로)
+
+**AC**:
+- [ ] 라이브 피드에 닉네임 + 한국어 자연어 액션 표시
+- [ ] 액션 타입별 색상 구분
+- [ ] 시스템 메시지(핸드 시작/딜) 구분되는 스타일
+- [ ] `hand_detail.html` 타임라인도 동일 포맷 적용
+
+**Commit**: `feat(viewer): humanize action feed with Korean labels and color coding`
+
+---
+
+## V3: 카드 렌더링 통합
+
+**Goal**: 모든 페이지에서 카드를 `.playing-card` 스타일로 일관되게 렌더링한다.
+
+**Deps**: 없음 (독립적)
+
+**Scope**:
+- `viewer/base.html`에 카드 렌더링 Jinja2 매크로 정의 (`render_card(card_str)`)
+- `hand_detail.html`:
+  - 보드 카드: 모노스페이스 텍스트 → `.playing-card` 컴포넌트 (기존 `table_live`와 동일)
+  - 홀카드 컬럼: `.playing-card.small` (작은 사이즈) 렌더링
+- `hand_list.html`: 보드 컬럼에 미니 `.playing-card.mini` 렌더링
+- `viewer.css`: `.playing-card.small` (32×44px), `.playing-card.mini` (24×34px) 사이즈 추가
+- 하트/다이아 빨강, 스페이드/클럽 검정 통일
+
+**AC**:
+- [ ] `hand_detail` 보드/홀카드가 비주얼 카드로 표시됨
+- [ ] `hand_list` 보드 컬럼이 미니 카드로 표시됨
+- [ ] 수트 색상 일관성 유지
+
+**Commit**: `feat(viewer): unified card rendering with playing-card components`
+
+---
+
+## V4: 로비 카지노 분위기 강화
+
+**Goal**: 로비 진입 시 카지노 첫인상을 개선한다.
+
+**Deps**: 없음 (독립적)
+
+**Scope**:
+- 상단에 전체 통계 바 추가: 진행 중인 핸드 수 / 총 착석 인원 (JS로 `/v1/public/tables` 폴링)
+- 테이블 카드 hover: `translateY(-4px)` + `box-shadow` lift 효과
+- LIVE 뱃지 아래 착석 인원 프로그레스 바 추가 (`seated/max_seats`)
+- 테이블 카드에 블라인드 정보를 칩 아이콘과 함께 표시 (🪙 SB/BB)
+- 미니 리더보드에 칩 아이콘(🏆), 1위 행 하이라이트
+- `viewer.css`: `.progress-bar`, `.stats-bar`, lift 애니메이션 추가
+
+**AC**:
+- [ ] 상단 통계 바 (진행 중 핸드, 총 착석) 표시
+- [ ] 테이블 카드 hover lift 애니메이션
+- [ ] 착석 인원 프로그레스 바
+- [ ] 미니 리더보드 1위 하이라이트
+
+**Commit**: `feat(viewer): lobby casino atmosphere — stats bar, hover effects, progress bar`
+
+---
+
+## V5: 리더보드 시각 강화
+
+**Goal**: 순위 경쟁 심리를 자극하는 시각 개선.
+
+**Deps**: 없음 (독립적)
+
+**Scope**:
+- TOP 3 행에 금/은/동 배경 그라데이션 강조
+- 승률 컬럼에 미니 프로그레스 바 (`<div class="wr-bar">`)
+- 수익 컬럼: 양수 `▲ +N` 녹색, 음수 `▼ N` 빨강
+- 현재 테이블 컬럼: 착석 중이면 `LIVE` 뱃지 + 테이블 링크
+- 닉네임 옆 현재 플레이 중 인디케이터 (착석이면 초록 dot `●`)
+- `viewer.css`: `.wr-bar`, `.rank-top3`, `.online-dot` 스타일 추가
+
+**AC**:
+- [ ] TOP 3 행 배경 강조 (금/은/동)
+- [ ] 승률 프로그레스 바 표시
+- [ ] 수익 ▲/▼ 화살표 + 색상
+- [ ] 현재 착석 중인 플레이어 식별 가능
+
+**Commit**: `feat(viewer): leaderboard visual enhancements — top3 highlight, win-rate bar`
+
+---
+
+## V6: 타이포그래피 & 전반 polish
+
+**Goal**: 전체 뷰어에 적용되는 기반 시각 개선.
+
+**Deps**: V1~V5 이후 최종 적용 (CSS 충돌 방지)
+
+**Scope**:
+- `viewer/base.html`: Google Fonts `Inter` (본문) + `JetBrains Mono` (칩/숫자) 로드
+- JS 유틸: `formatChips(n)` 함수 — 천 단위 콤마 (`1,234,567`)
+- `table_live.html`: 팟/베팅/스택에 `formatChips()` 적용
+- `leaderboard.html`: 칩/수익/팟 컬럼에 콤마 포매팅 (Jinja2 `{:,}` 필터)
+- `viewer/base.html` nav: 현재 경로에 맞는 링크에 `active` 클래스
+- `viewer.css`: `nav a.active { color: var(--accent); border-bottom: 2px solid var(--accent); }`
+- `viewer/base.html` footer: "Pokerthon · 2025" 브랜딩
+
+**AC**:
+- [ ] Inter/JetBrains Mono 폰트 적용
+- [ ] 모든 칩 금액에 천 단위 콤마 포매팅
+- [ ] Nav 현재 페이지 하이라이트
+- [ ] Footer 브랜딩
+
+**Commit**: `feat(viewer): typography polish — Inter font, chip formatting, nav active state`
 
 ---
 

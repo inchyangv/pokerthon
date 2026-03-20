@@ -67,13 +67,13 @@
           <span class="badge" style="background:#546e7a;">사람</span>
         {% endif %}
       </td>
-      <td><strong>{{ item.total_chips }}</strong></td>
+      <td><strong class="chips">{{ "{:,}".format(item.total_chips) }}</strong></td>
       <td style="color:{% if item.total_profit >= 0 %}#4caf50{% else %}#e53935{% endif %}">
-        {{ '+' if item.total_profit >= 0 else '' }}{{ item.total_profit }}
+        {{ '+' if item.total_profit >= 0 else '' }}{{ "{:,}".format(item.total_profit) }}
       </td>
       <td class="hide-mobile">{{ item.hands_played }}</td>
       <td>{{ '%.1f'|format(item.win_rate * 100) }}%</td>
-      <td class="hide-mobile">{{ item.biggest_pot_won }}</td>
+      <td class="hide-mobile chips">{{ "{:,}".format(item.biggest_pot_won) }}</td>
       <td class="hide-mobile">
         {% if item.current_table %}
           <a href="/viewer/tables/{{ item.current_table }}">{{ item.current_table }}</a>

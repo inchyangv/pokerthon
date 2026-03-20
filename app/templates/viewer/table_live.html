@@ -163,9 +163,9 @@
       if (s.state_version !== lastVersion) {
         lastVersion = s.state_version;
 
-        document.getElementById('totalPot').textContent =
-          (s.pot_view?.main_pot ?? 0) + (s.pot_view?.side_pots?.reduce((a,sp) => a + sp.amount, 0) ?? 0);
-        document.getElementById('currentBet').textContent = s.current_bet ?? 0;
+        const totalPot = (s.pot_view?.main_pot ?? 0) + (s.pot_view?.side_pots?.reduce((a,sp) => a + sp.amount, 0) ?? 0);
+        document.getElementById('totalPot').textContent = formatChips(totalPot);
+        document.getElementById('currentBet').textContent = formatChips(s.current_bet ?? 0);
         document.getElementById('street').textContent = s.street || '-';
 
         if (s.action_deadline_at) {

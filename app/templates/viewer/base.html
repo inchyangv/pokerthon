@@ -4,17 +4,41 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Pokerthon{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/viewer.css">
 </head>
 <body>
 <nav>
   <a href="/viewer/" class="brand">🂡 Pokerthon</a>
-  <a href="/viewer/">로비</a>
-  <a href="/viewer/leaderboard">리더보드</a>
+  <a href="/viewer/" class="nav-link" data-path="/viewer/">로비</a>
+  <a href="/viewer/leaderboard" class="nav-link" data-path="/viewer/leaderboard">리더보드</a>
 </nav>
 <div class="container">
   {% block content %}{% endblock %}
 </div>
+<footer>
+  Pokerthon &middot; 2025
+</footer>
 {% block scripts %}{% endblock %}
+<script>
+  // Nav active state
+  (function() {
+    const path = window.location.pathname;
+    document.querySelectorAll('.nav-link').forEach(a => {
+      const ap = a.dataset.path;
+      if (ap && (path === ap || (ap !== '/viewer/' && path.startsWith(ap)))) {
+        a.classList.add('active');
+      }
+    });
+  })();
+
+  // Global chip formatter
+  function formatChips(n) {
+    if (n === null || n === undefined) return '0';
+    return Number(n).toLocaleString('ko-KR');
+  }
+</script>
 </body>
 </html>

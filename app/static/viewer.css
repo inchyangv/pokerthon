@@ -22,11 +22,15 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
+
+.container { flex: 1; }
 
 /* Nav */
 nav {
@@ -53,6 +57,24 @@ nav a {
 }
 
 nav a:hover { color: var(--text); }
+nav a.active {
+  color: var(--accent);
+  border-bottom: 2px solid var(--accent);
+  padding-bottom: 2px;
+}
+
+/* Footer */
+footer {
+  text-align: center;
+  padding: 1.25rem;
+  font-size: .78rem;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  margin-top: 2rem;
+}
+
+/* Chip numbers use monospace */
+.chips { font-family: 'JetBrains Mono', monospace; }
 
 /* Container */
 .container {
