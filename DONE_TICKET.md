@@ -208,6 +208,22 @@
 
 ---
 
+# M10 — API Playground
+
+## T10.1: Playground 서명 헬퍼 API + 기본 레이아웃
+**Commit**: `feat(playground): add signature helper API, proxy endpoint, and signature generator page`
+**Status**: ✅ DONE
+
+## T10.2: API Explorer 페이지
+**Commit**: `feat(playground): add interactive API explorer with endpoint catalog and live testing`
+**Status**: ✅ DONE
+
+## T10.3: 퀵스타트 인터랙티브 가이드
+**Commit**: `feat(playground): add interactive quickstart guide with step-by-step API walkthrough`
+**Status**: ✅ DONE
+
+---
+
 # 전체 요약
 
 | Milestone | 티켓 수 | 상태 |
@@ -223,4 +239,5 @@
 | M7 | 4 | ✅ 완료 |
 | M8 | 8 | ✅ 완료 |
 | M9 | 5 | ✅ 완료 |
-| **합계** | **40** | **✅ 전체 완료** |
+| M10 | 3 | ✅ 완료 |
+| **합계** | **43** | **✅ 전체 완료** |
