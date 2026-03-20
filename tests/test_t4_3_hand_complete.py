@@ -160,7 +160,7 @@ async def test_hand_finished_action_logged(db_session: AsyncSession):
 
 @pytest.mark.asyncio
 async def test_stack_zero_auto_evict(db_session: AsyncSession):
-    """스택 0 플레이어 자동 이석 + TABLE_CASHOUT(delta=0) 원장 기록."""
+    """스택 0 플레이어 자동 이석 + HAND_LOSS 원장 기록 (starting=40, ending=0 → delta=-40)."""
     with patch("app.services.hand_completion.asyncio.ensure_future"):
         table, hand, seat_map, hp_map = await _setup_hand(
             db_session,
@@ -173,36 +173,39 @@ async def test_stack_zero_auto_evict(db_session: AsyncSession):
     assert seat_map[2].seat_status == SeatStatus.EMPTY
     assert seat_map[2].account_id is None
 
-    # TABLE_CASHOUT ledger with delta=0
+    # HAND_LOSS ledger: starting_stack=40, ending_stack=0 → delta=-40, wallet 100→60
     acc_id = hp_map[2].account_id
     ledger_q = await db_session.execute(
         select(ChipLedger).where(
             ChipLedger.account_id == acc_id,
-            ChipLedger.reason_type == LedgerReasonType.TABLE_CASHOUT,
+            ChipLedger.reason_type == LedgerReasonType.HAND_LOSS,
         )
     )
     entry = ledger_q.scalars().first()
     assert entry is not None
-    assert entry.delta == 0
+    assert entry.delta == -40
+
+    acc_q = await db_session.execute(select(Account).where(Account.id == acc_id))
+    acc = acc_q.scalar_one()
+    assert acc.wallet_balance == 60
 
 
 @pytest.mark.asyncio
 async def test_leaving_after_hand_evict(db_session: AsyncSession):
-    """LEAVING_AFTER_HAND 플레이어 → 이석 + 칩 반환."""
+    """LEAVING_AFTER_HAND 플레이어 → 이석 + 게임 delta(ending-starting) 반영."""
     with patch("app.services.hand_completion.asyncio.ensure_future"):
         table, hand, seat_map, hp_map = await _setup_hand(
             db_session,
             [
                 (1, 40, SeatStatus.SEATED),
-                (2, 30, SeatStatus.LEAVING_AFTER_HAND),  # wants to leave
+                (2, 30, SeatStatus.LEAVING_AFTER_HAND),  # wants to leave; ending_stack=30
             ],
             table_no=804,
         )
-        # give the account some wallet so we can verify balance increases
         acc_id = hp_map[2].account_id
         acc_q = await db_session.execute(select(Account).where(Account.id == acc_id))
         acc = acc_q.scalar_one()
-        before_balance = acc.wallet_balance
+        before_balance = acc.wallet_balance  # = 100
 
         await complete_hand(db_session, hand, _dummy_result)
 
@@ -210,8 +213,9 @@ async def test_leaving_after_hand_evict(db_session: AsyncSession):
     assert seat_map[2].seat_status == SeatStatus.EMPTY
     assert seat_map[2].account_id is None
 
+    # starting_stack=40, ending_stack=30 → delta=-10 → wallet 100→90
     await db_session.refresh(acc)
-    assert acc.wallet_balance == before_balance + 30
+    assert acc.wallet_balance == before_balance - 10
 
 
 @pytest.mark.asyncio

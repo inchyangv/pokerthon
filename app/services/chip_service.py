@@ -111,6 +111,36 @@ async def transfer_from_table(
     return account
 
 
+async def apply_game_delta(
+    session: AsyncSession,
+    account_id: int,
+    delta: int,
+    hand_id: int,
+) -> None:
+    """Apply a net win/loss delta to the account wallet at hand completion.
+
+    In this chip model, wallet_balance is the account's total chip balance and
+    already includes chips currently deployed on any table. This function records
+    the net change (positive = won, negative = lost) resulting from one hand.
+    Skips ledger write when delta == 0.
+    """
+    if delta == 0:
+        return
+    result = await session.execute(select(Account).where(Account.id == account_id).with_for_update())
+    account = result.scalar_one()
+    account.wallet_balance += delta
+    reason = LedgerReasonType.HAND_WIN if delta > 0 else LedgerReasonType.HAND_LOSS
+    await _record_ledger(
+        session, account_id,
+        delta=delta,
+        balance_after=account.wallet_balance,
+        reason_type=reason,
+        reason_text="game result",
+        ref_type="hand",
+        ref_id=hand_id,
+    )
+
+
 async def get_ledger(session: AsyncSession, account_id: int) -> list[ChipLedger]:
     result = await session.execute(
         select(ChipLedger)

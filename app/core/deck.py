@@ -5,17 +5,26 @@ import random
 
 from app.core.card import Card, RANK_ORDER, SUITS
 
+_EXPECTED_DECK_SIZE = 52
+_rng = random.SystemRandom()
+
 
 class Deck:
     def __init__(self, cards: list[Card] | None = None):
         if cards is not None:
+            strs = [str(c) for c in cards]
+            if len(strs) != _EXPECTED_DECK_SIZE or len(set(strs)) != _EXPECTED_DECK_SIZE:
+                raise ValueError(
+                    f"Deck integrity error: expected {_EXPECTED_DECK_SIZE} unique cards, "
+                    f"got {len(strs)} with {len(set(strs))} unique"
+                )
             self._cards = list(cards)
         else:
             self._cards = [Card(r + s) for r in RANK_ORDER for s in "shdc"]
         self.deal_index = 0
 
     def shuffle(self) -> None:
-        random.shuffle(self._cards)
+        _rng.shuffle(self._cards)
         self.deal_index = 0
 
     def deal(self, n: int) -> list[Card]:
@@ -30,7 +39,13 @@ class Deck:
 
     @classmethod
     def from_json(cls, data: str, deal_index: int = 0) -> "Deck":
-        cards = [Card(s) for s in json.loads(data)]
+        raw = json.loads(data)
+        if len(raw) != _EXPECTED_DECK_SIZE or len(set(raw)) != _EXPECTED_DECK_SIZE:
+            raise ValueError(
+                f"Deck integrity error: expected {_EXPECTED_DECK_SIZE} unique cards in stored deck, "
+                f"got {len(raw)} with {len(set(raw))} unique"
+            )
+        cards = [Card(s) for s in raw]
         d = cls(cards)
         d.deal_index = deal_index
         return d

@@ -221,19 +221,14 @@ async def test_chip_conservation_invariant(db_session, client):
         )
         assert r.status_code == 200, r.text
 
-    # Verify total chips = 3 × BOT_INITIAL_CHIPS (wallet + stack)
+    # Verify total chips = 3 × BOT_INITIAL_CHIPS
+    # wallet_balance is the account's total chip count (includes chips at table).
+    # Stacks are a subset of wallet_balance; adding both would double-count.
     total_before = 0
     for acc_id in account_ids:
         acc = await db_session.get(Account, acc_id)
         await db_session.refresh(acc)
         total_before += acc.wallet_balance
-
-        seat_r = await db_session.execute(
-            select(TableSeat).where(TableSeat.account_id == acc_id)
-        )
-        seat = seat_r.scalar_one_or_none()
-        if seat:
-            total_before += seat.stack
 
     expected = settings.BOT_INITIAL_CHIPS * 3
     assert total_before == expected, f"Expected {expected}, got {total_before}"

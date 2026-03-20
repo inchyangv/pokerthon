@@ -48,8 +48,9 @@ async def test_sit_and_stand(client: AsyncClient):
     assert r.status_code == 200
     assert r.json()["stack"] == 40
 
+    # wallet_balance is NOT deducted on sit; chips are account assets
     acc_r = await client.get(f"/admin/accounts/{acc_id}", headers=ADMIN_HEADERS)
-    assert acc_r.json()["wallet_balance"] == 160
+    assert acc_r.json()["wallet_balance"] == 200
 
     path_stand = "/v1/private/tables/10/stand"
     headers2 = auth_headers(api_key, secret_key, "POST", path_stand)
@@ -57,6 +58,7 @@ async def test_sit_and_stand(client: AsyncClient):
     assert r2.status_code == 200
     assert r2.json()["immediate"] is True
 
+    # wallet_balance unchanged on stand (no prior deduction, no hand played)
     acc_r2 = await client.get(f"/admin/accounts/{acc_id}", headers=ADMIN_HEADERS)
     assert acc_r2.json()["wallet_balance"] == 200
 

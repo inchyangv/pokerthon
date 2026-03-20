@@ -9,36 +9,11 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.account import Account
-from app.models.chip import ChipLedger, LedgerReasonType
 from app.models.hand import Hand, HandPlayer, HandResult, HandStatus
 from app.models.table import SeatStatus, Table, TableSeat, TableStatus
+from app.services.chip_service import apply_game_delta
 from app.services.hand_service import _log_action
 from app.services.snapshot_service import bump_snapshot
-
-
-async def _record_cashout(
-    session: AsyncSession,
-    account_id: int,
-    amount: int,
-    table_id: int,
-) -> None:
-    """Return table stack to wallet and write ledger entry."""
-    acc_result = await session.execute(
-        select(Account).where(Account.id == account_id).with_for_update()
-    )
-    account = acc_result.scalar_one()
-    account.wallet_balance += amount
-    entry = ChipLedger(
-        account_id=account_id,
-        delta=amount,
-        balance_after=account.wallet_balance,
-        reason_type=LedgerReasonType.TABLE_CASHOUT,
-        reason_text="table cashout",
-        ref_type="table",
-        ref_id=table_id,
-    )
-    session.add(entry)
 
 
 
@@ -109,19 +84,22 @@ async def complete_hand(
         if hp is None:
             continue  # spectator / joined mid-hand
 
+        # Apply net chip change (win/loss) to the account wallet.
+        # wallet_balance is the account's total chip count including chips in play.
+        delta = hp.ending_stack - hp.starting_stack
+        await apply_game_delta(session, seat.account_id, delta, hand.id)
+
         # Sync seat stack from ending_stack
         seat.stack = hp.ending_stack
 
-        # Stack-0 auto-evict
+        # Stack-0 auto-evict (no cashout needed; wallet already updated above)
         if seat.stack == 0 and seat.seat_status in (SeatStatus.SEATED, SeatStatus.LEAVING_AFTER_HAND):
-            await _record_cashout(session, seat.account_id, 0, hand.table_id)
             seat.seat_status = SeatStatus.EMPTY
             seat.account_id = None
             continue
 
-        # LEAVING_AFTER_HAND → evict with cashout
+        # LEAVING_AFTER_HAND → evict (wallet already updated; just clear seat)
         if seat.seat_status == SeatStatus.LEAVING_AFTER_HAND:
-            await _record_cashout(session, seat.account_id, seat.stack, hand.table_id)
             seat.stack = 0
             seat.seat_status = SeatStatus.EMPTY
             seat.account_id = None

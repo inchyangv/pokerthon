@@ -194,12 +194,12 @@ async def test_scenario1_two_player_full_flow(client: AsyncClient, db_session: A
     table = table_r.scalar_one()
     table_id = table.id
 
-    # Record total chips before hand
+    # Record total chips before hand.
+    # wallet_balance is the account's total chip count (includes chips deployed at table).
+    # Conservation invariant: sum(wallets) is constant — stacks are a subset, not additive.
     w1_before = await _get_wallet(db_session, acc1_id)
     w2_before = await _get_wallet(db_session, acc2_id)
-    s1_before = await _get_stack(db_session, table_id, acc1_id)
-    s2_before = await _get_stack(db_session, table_id, acc2_id)
-    total_before = w1_before + w2_before + s1_before + s2_before
+    total_before = w1_before + w2_before
 
     with patch("app.services.hand_completion.asyncio.ensure_future"):
         hand = await start_hand(db_session, table_id)
@@ -214,12 +214,10 @@ async def test_scenario1_two_player_full_flow(client: AsyncClient, db_session: A
     assert finished is not None
     assert finished.status == HandStatus.FINISHED
 
-    # Chip conservation
+    # Chip conservation: sum of wallets is unchanged
     w1_after = await _get_wallet(db_session, acc1_id)
     w2_after = await _get_wallet(db_session, acc2_id)
-    s1_after = await _get_stack(db_session, table_id, acc1_id)
-    s2_after = await _get_stack(db_session, table_id, acc2_id)
-    total_after = w1_after + w2_after + s1_after + s2_after
+    total_after = w1_after + w2_after
     assert total_before == total_after, (
         f"Chip conservation failed: before={total_before}, after={total_after}"
     )
@@ -265,11 +263,11 @@ async def test_scenario2_three_player_allin_side_pots(
         seat.stack = stack
     await db_session.commit()
 
-    # Record totals
+    # Record totals (wallet_balance includes all chips; stacks are a subset, not additive)
     w1 = await _get_wallet(db_session, acc1_id)
     w2 = await _get_wallet(db_session, acc2_id)
     w3 = await _get_wallet(db_session, acc3_id)
-    total_before = w1 + w2 + w3 + 10 + 20 + 40
+    total_before = w1 + w2 + w3
 
     with patch("app.services.hand_completion.asyncio.ensure_future"):
         hand = await start_hand(db_session, table_id)
@@ -295,14 +293,11 @@ async def test_scenario2_three_player_allin_side_pots(
             api_key, secret_key = creds[hp.account_id]
             await _submit_action(client, TABLE_NO, api_key, secret_key, h.id, {"type": "ALL_IN"})
 
-    # Chip conservation
+    # Chip conservation: sum of wallets is unchanged (stacks are a subset, not additive)
     w1_after = await _get_wallet(db_session, acc1_id)
     w2_after = await _get_wallet(db_session, acc2_id)
     w3_after = await _get_wallet(db_session, acc3_id)
-    s1_after = await _get_stack(db_session, table_id, acc1_id)
-    s2_after = await _get_stack(db_session, table_id, acc2_id)
-    s3_after = await _get_stack(db_session, table_id, acc3_id)
-    total_after = w1_after + w2_after + w3_after + s1_after + s2_after + s3_after
+    total_after = w1_after + w2_after + w3_after
     assert total_before == total_after, (
         f"Chip conservation failed: before={total_before}, after={total_after}"
     )
@@ -441,7 +436,8 @@ async def test_scenario4_stand_during_hand(client: AsyncClient, db_session: Asyn
         seat2 = seat2_r.scalar_one()
         assert seat2.seat_status == SeatStatus.LEAVING_AFTER_HAND
 
-        # Record wallet before hand completion
+        # Record wallets before hand completion (for conservation check)
+        w1_before = await _get_wallet(db_session, acc1_id)
         w2_before = await _get_wallet(db_session, acc2_id)
 
         # Drive hand to completion
@@ -457,9 +453,10 @@ async def test_scenario4_stand_during_hand(client: AsyncClient, db_session: Asyn
     assert seat2.seat_status == SeatStatus.EMPTY, "Seat should be empty after hand"
     assert seat2.account_id is None
 
-    # Wallet should have increased (stack returned after hand)
+    # Chip conservation: total wallets unchanged (game delta was applied, stacks cleared)
+    w1_after = await _get_wallet(db_session, acc1_id)
     w2_after = await _get_wallet(db_session, acc2_id)
-    assert w2_after >= w2_before, "Wallet should increase after stack cashout"
+    assert w1_before + w2_before == w1_after + w2_after, "Chip conservation failed"
 
 
 # ---------------------------------------------------------------------------
@@ -497,18 +494,14 @@ async def test_scenario5_multi_table_concurrent(
     table_a_id = table_a.id
     table_b_id = table_b.id
 
-    # Record chip totals
+    # Record chip totals (wallet_balance includes chips at table; stacks are a subset)
     total_a_before = (
         (await _get_wallet(db_session, acc_a1_id))
         + (await _get_wallet(db_session, acc_a2_id))
-        + (await _get_stack(db_session, table_a_id, acc_a1_id))
-        + (await _get_stack(db_session, table_a_id, acc_a2_id))
     )
     total_b_before = (
         (await _get_wallet(db_session, acc_b1_id))
         + (await _get_wallet(db_session, acc_b2_id))
-        + (await _get_stack(db_session, table_b_id, acc_b1_id))
-        + (await _get_stack(db_session, table_b_id, acc_b2_id))
     )
 
     with patch("app.services.hand_completion.asyncio.ensure_future"):
@@ -530,18 +523,14 @@ async def test_scenario5_multi_table_concurrent(
     assert fa_r.scalar_one().status == HandStatus.FINISHED
     assert fb_r.scalar_one().status == HandStatus.FINISHED
 
-    # Chip conservation per table
+    # Chip conservation per table (sum of wallets; stacks are a subset, not additive)
     total_a_after = (
         (await _get_wallet(db_session, acc_a1_id))
         + (await _get_wallet(db_session, acc_a2_id))
-        + (await _get_stack(db_session, table_a_id, acc_a1_id))
-        + (await _get_stack(db_session, table_a_id, acc_a2_id))
     )
     total_b_after = (
         (await _get_wallet(db_session, acc_b1_id))
         + (await _get_wallet(db_session, acc_b2_id))
-        + (await _get_stack(db_session, table_b_id, acc_b1_id))
-        + (await _get_stack(db_session, table_b_id, acc_b2_id))
     )
     assert total_a_before == total_a_after, "Table A chip conservation failed"
     assert total_b_before == total_b_after, "Table B chip conservation failed"

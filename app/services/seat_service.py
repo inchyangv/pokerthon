@@ -6,7 +6,6 @@ from sqlalchemy.orm import selectinload
 
 from app.models.hand import Hand, HandPlayer, HandStatus
 from app.models.table import SeatStatus, Table, TableSeat, TableStatus
-from app.services.chip_service import transfer_from_table, transfer_to_table
 
 
 async def get_current_seat(session: AsyncSession, account_id: int) -> TableSeat | None:
@@ -56,17 +55,14 @@ async def sit(session: AsyncSession, account_id: int, table_no: int, seat_no: in
         if not target:
             raise ValueError("TABLE_FULL: No empty seats available")
 
-    # Check wallet balance
+    # Require minimum wallet balance to deploy a stack (chips are account assets; no deduction)
     from app.models.account import Account
     acc_result = await session.execute(select(Account).where(Account.id == account_id))
     account = acc_result.scalar_one()
     if account.wallet_balance < table.buy_in:
         raise ValueError("INSUFFICIENT_BALANCE: Not enough chips")
 
-    # Deduct buy-in from wallet
-    await transfer_to_table(session, account_id, table.buy_in, table.id)
-
-    # Update seat
+    # Update seat (wallet_balance is NOT deducted; wallet always reflects total chip count)
     target.account_id = account_id
     target.seat_status = SeatStatus.SEATED
     target.stack = table.buy_in
@@ -104,10 +100,7 @@ async def stand(session: AsyncSession, account_id: int, table_no: int) -> dict:
         await session.commit()
         return {"immediate": False, "message": "Will leave after current hand ends"}
     else:
-        # Immediate leave
-        stack = seat.stack
-        if stack > 0:
-            await transfer_from_table(session, account_id, stack, table.id)
+        # Immediate leave — wallet_balance is unaffected (no prior deduction)
         seat.seat_status = SeatStatus.EMPTY
         seat.account_id = None
         seat.stack = 0
