@@ -107,6 +107,12 @@ async def process_action(
     if not advanced:
         # Round still in progress; just advance the action seat
         await _advance_action(session, hand)
+    else:
+        # Transition occurred; resolve showdown if hand has reached that state
+        await session.refresh(hand)
+        if hand.street == "showdown":
+            from app.services.showdown_service import resolve_showdown
+            await resolve_showdown(session, hand)
 
     await session.commit()
     return action

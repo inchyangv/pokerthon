@@ -70,7 +70,9 @@ async def advance_street(session: AsyncSession, hand: Hand) -> bool:
     # Check fold winner: only 1 non-folded player
     non_folded = [p for p in players if not p.folded]
     if len(non_folded) == 1:
-        # Immediate win — handled by caller
+        hand.street = "showdown"
+        hand.action_seat_no = None
+        await session.commit()
         return True
 
     if not _is_round_complete(players, hand.current_bet):
