@@ -13,3 +13,4 @@ alembic/versions/*.pyc
 *.db
 *.sqlite
 .DS_Store
+*.pptx
