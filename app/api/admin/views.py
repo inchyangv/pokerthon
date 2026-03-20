@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_session
 from app.models.account import Account
+from app.models.bot import BotProfile
 from app.models.chip import ChipLedger
 from app.models.credential import ApiCredential, CredentialStatus
 from app.models.hand import Hand, HandPlayer, HandStatus
@@ -80,6 +81,14 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
     total_chips = (await session.execute(
         select(func.coalesce(func.sum(Account.wallet_balance), 0))
     )).scalar_one()
+    active_bot_count = (await session.execute(
+        select(func.count(BotProfile.id)).where(BotProfile.is_active == True)  # noqa: E712
+    )).scalar_one()
+    seated_bot_count = (await session.execute(
+        select(func.count(TableSeat.id)).where(
+            TableSeat.seat_status.in_([SeatStatus.SEATED, SeatStatus.LEAVING_AFTER_HAND])
+        ).join(Account, Account.id == TableSeat.account_id).where(Account.is_bot == True)  # noqa: E712
+    )).scalar_one()
 
     return templates.TemplateResponse(request, "admin/dashboard.html", {
         "request": request,
@@ -87,6 +96,8 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
         "account_count": acc_count,
         "table_count": table_count,
         "total_chips": total_chips,
+        "active_bot_count": active_bot_count,
+        "seated_bot_count": seated_bot_count,
     })
 
 
@@ -564,6 +575,37 @@ async def table_detail_ui(
         "seats": seats_out,
         "current_hand": current_hand_data,
         "hand_history": hand_history,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Bots
+# ---------------------------------------------------------------------------
+
+@router.get("/bots", response_class=HTMLResponse)
+async def bots_page(request: Request, session: AsyncSession = Depends(get_session)):
+    from app.services.bot_service import list_bots
+    bots = await list_bots(session)
+
+    # JSON response for API clients
+    if _is_api_request(request):
+        is_active_param = request.query_params.get("is_active")
+        filtered = bots
+        if is_active_param is not None:
+            want_active = is_active_param.lower() in ("true", "1")
+            filtered = [b for b in bots if b["is_active"] == want_active]
+        return JSONResponse(filtered)
+
+    if not _is_authenticated(request):
+        return _redirect_login("/admin/bots")
+
+    tables_r = await session.execute(select(Table).order_by(Table.table_no))
+    tables = list(tables_r.scalars().all())
+
+    return templates.TemplateResponse(request, "admin/bots.html", {
+        "flash": None,
+        "bots": bots,
+        "tables": tables,
     })
 
 

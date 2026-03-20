@@ -1,0 +1,162 @@
+{% extends "admin/base.html" %}
+{% block title %}봇 관리 — Pokerthon Admin{% endblock %}
+{% block content %}
+<h1>봇 관리</h1>
+
+<!-- 봇 생성 폼 -->
+<div class="card" style="margin-bottom:1.5rem;">
+  <h2>봇 생성</h2>
+  <form id="createBotForm" style="display:flex;gap:1rem;align-items:flex-end;flex-wrap:wrap;">
+    <div>
+      <label>타입</label>
+      <select id="botType" name="bot_type" required>
+        <option value="TAG">TAG (타이트-어그레시브)</option>
+        <option value="LAG">LAG (루즈-어그레시브)</option>
+        <option value="FISH">FISH (루즈-패시브)</option>
+      </select>
+    </div>
+    <div>
+      <label>이름</label>
+      <input type="text" id="botName" name="display_name" placeholder="bot_tag_1" required>
+    </div>
+    <button type="submit" class="btn btn-primary">생성</button>
+  </form>
+  <div id="createResult" style="margin-top:.5rem;"></div>
+</div>
+
+<!-- 봇 목록 -->
+<h2>봇 목록</h2>
+<table>
+  <thead>
+    <tr>
+      <th>ID</th><th>이름</th><th>타입</th><th>상태</th>
+      <th>지갑 잔액</th><th>테이블</th><th>좌석</th><th>스택</th><th>작업</th>
+    </tr>
+  </thead>
+  <tbody id="botsTableBody">
+  {% for b in bots %}
+  <tr>
+    <td>{{ b.bot_id }}</td>
+    <td>{{ b.display_name }}</td>
+    <td>
+      {% if b.bot_type == 'TAG' %}<span class="badge" style="background:#2563eb">TAG</span>
+      {% elif b.bot_type == 'LAG' %}<span class="badge" style="background:#dc2626">LAG</span>
+      {% else %}<span class="badge" style="background:#16a34a">FISH</span>{% endif %}
+    </td>
+    <td>{% if b.is_active %}<span class="badge badge-success">활성</span>{% else %}<span class="badge badge-error">비활성</span>{% endif %}</td>
+    <td>{{ b.wallet_balance }}</td>
+    <td>{{ b.table_no or '-' }}</td>
+    <td>{{ b.seat_no or '-' }}</td>
+    <td>{{ b.stack or '-' }}</td>
+    <td>
+      {% if b.is_active %}
+        {% if b.seat_no %}
+          <button class="btn btn-sm btn-secondary" onclick="unseatBot({{ b.bot_id }})">이석</button>
+        {% else %}
+          <button class="btn btn-sm btn-primary" onclick="openSeatModal({{ b.bot_id }})">착석</button>
+        {% endif %}
+        <button class="btn btn-sm btn-danger" onclick="deactivateBot({{ b.bot_id }})">비활성화</button>
+      {% endif %}
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="9" style="text-align:center;">봇이 없습니다.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<!-- 착석 모달 -->
+<div id="seatModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:100;align-items:center;justify-content:center;">
+  <div style="background:white;border-radius:8px;padding:2rem;min-width:300px;">
+    <h3>봇 착석</h3>
+    <input type="hidden" id="seatBotId">
+    <div style="margin-bottom:1rem;">
+      <label>테이블 번호</label>
+      <select id="seatTableNo">
+        {% for t in tables %}
+        <option value="{{ t.table_no }}">테이블 {{ t.table_no }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="margin-bottom:1rem;">
+      <label>좌석 번호 (선택, 비우면 자동)</label>
+      <input type="number" id="seatNo" min="1" max="9" placeholder="1~9">
+    </div>
+    <div style="display:flex;gap:.5rem;">
+      <button class="btn btn-primary" onclick="submitSeat()">착석</button>
+      <button class="btn btn-secondary" onclick="closeSeatModal()">취소</button>
+    </div>
+    <div id="seatResult" style="margin-top:.5rem;"></div>
+  </div>
+</div>
+
+<script>
+  const headers = {'Content-Type': 'application/json', 'Authorization': 'Bearer changeme'};
+
+  document.getElementById('createBotForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const res = await fetch('/admin/bots', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        bot_type: document.getElementById('botType').value,
+        display_name: document.getElementById('botName').value,
+      })
+    });
+    const data = await res.json();
+    const el = document.getElementById('createResult');
+    if (res.ok) {
+      el.innerHTML = `<span style="color:green">생성됨: ${data.display_name} (${data.bot_type}), 칩: ${data.chips}</span>`;
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      el.innerHTML = `<span style="color:red">${data.detail?.message || '오류'}</span>`;
+    }
+  });
+
+  function openSeatModal(botId) {
+    document.getElementById('seatBotId').value = botId;
+    document.getElementById('seatNo').value = '';
+    document.getElementById('seatResult').innerHTML = '';
+    document.getElementById('seatModal').style.display = 'flex';
+  }
+
+  function closeSeatModal() {
+    document.getElementById('seatModal').style.display = 'none';
+  }
+
+  async function submitSeat() {
+    const botId = document.getElementById('seatBotId').value;
+    const tableNo = parseInt(document.getElementById('seatTableNo').value);
+    const seatNoVal = document.getElementById('seatNo').value;
+    const body = {table_no: tableNo};
+    if (seatNoVal) body.seat_no = parseInt(seatNoVal);
+
+    const res = await fetch(`/admin/bots/${botId}/seat`, {
+      method: 'POST', headers,
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    const el = document.getElementById('seatResult');
+    if (res.ok) {
+      el.innerHTML = `<span style="color:green">착석 완료 (좌석 ${data.seat_no})</span>`;
+      setTimeout(() => { closeSeatModal(); location.reload(); }, 800);
+    } else {
+      el.innerHTML = `<span style="color:red">${data.detail?.message || '오류'}</span>`;
+    }
+  }
+
+  async function unseatBot(botId) {
+    if (!confirm('이석 처리하시겠습니까?')) return;
+    const res = await fetch(`/admin/bots/${botId}/unseat`, {method: 'POST', headers});
+    if (res.ok) location.reload();
+    else alert('이석 실패');
+  }
+
+  async function deactivateBot(botId) {
+    if (!confirm('봇을 비활성화하시겠습니까?')) return;
+    const res = await fetch(`/admin/bots/${botId}`, {method: 'DELETE', headers});
+    if (res.ok) location.reload();
+    else alert('비활성화 실패');
+  }
+</script>
+{% endblock %}
