@@ -148,6 +148,66 @@
 
 ---
 
+# M8 — Bot AI
+
+## T8.1: Bot 데이터 모델 & Alembic 마이그레이션
+**Commit**: `feat(bot-model): add BotProfile model, Account.is_bot flag, and bot config settings`
+**Status**: ✅ DONE
+
+## T8.2: Bot 전략 엔진 — 프리플롭 핸드 레인지
+**Commit**: `feat(bot-preflop): add preflop hand range tables and decision logic for 3 bot types`
+**Status**: ✅ DONE
+
+## T8.3: Bot 전략 엔진 — 포스트플롭 의사결정
+**Commit**: `feat(bot-postflop): add postflop decision engine with hand strength and pot odds`
+**Status**: ✅ DONE
+
+## T8.4: Bot 러너 백그라운드 태스크
+**Commit**: `feat(bot-runner): add background task for automated bot action submission`
+**Status**: ✅ DONE
+
+## T8.5: Admin Bot 관리 API
+**Commit**: `feat(bot-api): add admin API for bot creation, listing, seating, and removal`
+**Status**: ✅ DONE
+
+## T8.6: Admin UI — Bot 관리 페이지
+**Commit**: `feat(bot-ui): add admin web UI for bot management and dashboard integration`
+**Status**: ✅ DONE
+
+## T8.7: Bot 초기화 시드 & 자동 착석
+**Commit**: `feat(bot-seed): add automatic bot creation and table seating on server startup`
+**Status**: ✅ DONE
+
+## T8.8: Bot 통합 테스트
+**Commit**: `test(bot): add integration tests for bot gameplay, strategy, and management`
+**Status**: ✅ DONE
+
+---
+
+# M9 — Spectator UI & Leaderboard
+
+## T9.1: 리더보드 통계 API
+**Commit**: `feat(leaderboard): add player statistics aggregation and public leaderboard API`
+**Status**: ✅ DONE
+
+## T9.2: Viewer 기본 레이아웃 & 로비 페이지
+**Commit**: `feat(viewer): add spectator base layout, lobby page, and dark theme CSS`
+**Status**: ✅ DONE
+
+## T9.3: 라이브 테이블 뷰
+**Commit**: `feat(viewer): add live table view with poker visual, action feed, and auto-polling`
+**Status**: ✅ DONE
+
+## T9.4: 리더보드 페이지
+**Commit**: `feat(viewer): add leaderboard page with rankings, filters, and statistics`
+**Status**: ✅ DONE
+
+## T9.5: 핸드 히스토리 뷰어
+**Commit**: `feat(viewer): add hand history list and detailed hand replay pages`
+**Status**: ✅ DONE
+
+---
+
 # 전체 요약
 
 | Milestone | 티켓 수 | 상태 |
@@ -161,4 +221,6 @@
 | M5 | 3 | ✅ 완료 |
 | M6 | 2 | ✅ 완료 |
 | M7 | 4 | ✅ 완료 |
-| **합계** | **27** | **✅ 전체 완료** |
+| M8 | 8 | ✅ 완료 |
+| M9 | 5 | ✅ 완료 |
+| **합계** | **40** | **✅ 전체 완료** |
