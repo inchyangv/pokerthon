@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api.admin.accounts import router as admin_accounts_router
+from app.api.admin.chips import router as admin_chips_router
 from app.api.admin.credentials import router as admin_credentials_router
 from app.api.health import router as health_router
 from app.middleware.admin_auth import AdminAuthMiddleware
@@ -27,3 +28,4 @@ app.add_middleware(AdminAuthMiddleware)
 app.include_router(health_router)
 app.include_router(admin_accounts_router)
 app.include_router(admin_credentials_router)
+app.include_router(admin_chips_router)
