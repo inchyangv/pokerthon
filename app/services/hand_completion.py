@@ -11,9 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.account import Account
 from app.models.chip import ChipLedger, LedgerReasonType
-from app.models.hand import Hand, HandPlayer, HandResult, HandStatus, TableSnapshot
+from app.models.hand import Hand, HandPlayer, HandResult, HandStatus
 from app.models.table import SeatStatus, Table, TableSeat, TableStatus
 from app.services.hand_service import _log_action
+from app.services.snapshot_service import bump_snapshot
 
 
 async def _record_cashout(
@@ -39,15 +40,6 @@ async def _record_cashout(
     )
     session.add(entry)
 
-
-async def _bump_snapshot(session: AsyncSession, table_id: int) -> None:
-    snap = await session.get(TableSnapshot, table_id)
-    if snap is None:
-        snap = TableSnapshot(table_id=table_id, version=1, snapshot_json="{}")
-        session.add(snap)
-    else:
-        snap.version += 1
-        snap.updated_at = datetime.now(timezone.utc)
 
 
 async def complete_hand(
@@ -135,7 +127,7 @@ async def complete_hand(
             seat.account_id = None
 
     # --- 3. Bump snapshot ---
-    await _bump_snapshot(session, hand.table_id)
+    await bump_snapshot(session, hand.table_id)
 
     await session.commit()
 
