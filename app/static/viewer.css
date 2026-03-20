@@ -303,7 +303,21 @@ td a:hover { text-decoration: underline; }
 
 .board-cards-inline { display: inline-flex; gap: .2rem; vertical-align: middle; }
 
-.pot-info { color: #fff; font-size: .9rem; margin-top: .4rem; }
+/* Pot display on table center */
+.pot-display { margin-top: .35rem; text-align: center; }
+.pot-main {
+  color: #fff;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .95rem;
+  font-weight: 700;
+  text-shadow: 0 1px 4px rgba(0,0,0,.6);
+}
+.pot-side {
+  color: var(--warn);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .75rem;
+  margin-top: .1rem;
+}
 
 /* ── Seat positions around table (9 seats) ── */
 /* Positions are center-anchored via transform: translate(-50%,-50%) */
@@ -366,9 +380,27 @@ td a:hover { text-decoration: underline; }
 .seat-chip.all-in  { border-color: var(--warn); box-shadow: 0 0 8px rgba(251,140,0,.4); }
 .seat-chip.empty   { border-style: dashed; color: var(--text-muted); background: transparent; }
 
-.seat-chip .seat-no   { font-size: .6rem; color: var(--text-muted); }
-.seat-chip .seat-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 76px; }
+.seat-chip .seat-no    { font-size: .6rem; color: var(--text-muted); }
+.seat-chip .seat-name  { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 76px; }
 .seat-chip .seat-stack { color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: .7rem; }
+
+/* Per-seat bet indicator */
+.seat-bet-chip {
+  display: inline-block;
+  background: rgba(251,140,0,.2);
+  color: var(--warn);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .62rem;
+  border-radius: 3px;
+  padding: .05rem .25rem;
+  margin-top: .1rem;
+}
+
+/* Active seat action labels */
+.seat-action-call  { font-size: .65rem; color: #64b5f6; font-weight: 700; }
+.seat-action-check { font-size: .65rem; color: #66bb6a; }
+.seat-action-fold  { font-size: .62rem; color: #9e9e9e; }
+.seat-action-allin { font-size: .65rem; color: var(--danger); font-weight: 700; }
 
 .seat-markers { display: flex; gap: .2rem; justify-content: center; }
 

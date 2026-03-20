@@ -10,8 +10,12 @@
 <!-- Info Bar -->
 <div class="info-bar">
   <div class="info-pill">
-    <div class="pill-label">총 팟</div>
-    <div class="pill-value chips" id="totalPot">0</div>
+    <div class="pill-label">메인 팟</div>
+    <div class="pill-value chips" id="mainPot">0</div>
+  </div>
+  <div class="info-pill" id="sidePotPill" style="display:none;">
+    <div class="pill-label">사이드 팟</div>
+    <div class="pill-value chips" id="sidePotVal" style="color:var(--warn);">0</div>
   </div>
   <div class="info-pill">
     <div class="pill-label">현재 베팅</div>
@@ -34,7 +38,6 @@
 <!-- Visual Poker Table -->
 <div class="poker-table-wrap" id="tableWrap">
 
-  <!-- Table felt -->
   <div class="poker-table">
     <div class="board-center">
       <div class="board-cards" id="boardCards">
@@ -44,11 +47,11 @@
         <div class="playing-card empty">?</div>
         <div class="playing-card empty">?</div>
       </div>
-      <div class="pot-info chips" id="potCenter"></div>
+      <div class="pot-display" id="potDisplay"></div>
     </div>
   </div>
 
-  <!-- 9 Seat containers (populated by JS) -->
+  <!-- 9 Seat containers -->
   {% for i in range(1, 10) %}
   <div class="seat-container seat-pos-{{ i }}" id="seat-{{ i }}">
     <div class="seat-chip empty">
@@ -77,7 +80,7 @@
   let lastVersion = -1;
   let pollInterval = 2000;
   let retryDelay = 1000;
-  let seatNickMap = {};  // seat_no -> nickname
+  let seatNickMap = {};
 
   const SUIT_SYMBOLS = { s: '♠', h: '♥', d: '♦', c: '♣' };
   const SUIT_CLASSES  = { s: 'spades', h: 'hearts', d: 'diamonds', c: 'clubs' };
@@ -85,44 +88,80 @@
   function cardHtml(c) {
     if (!c) return '<div class="playing-card empty">?</div>';
     const rank = c.slice(0, -1), suit = c.slice(-1);
-    const sym = SUIT_SYMBOLS[suit] || suit;
-    return `<div class="playing-card ${SUIT_CLASSES[suit] || ''}">${rank}${sym}</div>`;
+    return `<div class="playing-card ${SUIT_CLASSES[suit] || ''}">${rank}${SUIT_SYMBOLS[suit] || suit}</div>`;
   }
 
   function updateBoard(board) {
-    const el = document.getElementById('boardCards');
-    el.innerHTML = Array.from({ length: 5 }, (_, i) => cardHtml(board[i])).join('');
+    document.getElementById('boardCards').innerHTML =
+      Array.from({ length: 5 }, (_, i) => cardHtml(board[i])).join('');
   }
 
-  function updateSeats(seats, buttonSeat, actionSeat, sbSeat, bbSeat) {
+  function updatePotDisplay(potView) {
+    const mainPot = potView?.main_pot ?? 0;
+    const sidePots = potView?.side_pots ?? [];
+    const totalSide = sidePots.reduce((s, sp) => s + sp.amount, 0);
+
+    document.getElementById('mainPot').textContent = formatChips(mainPot);
+    document.getElementById('currentBet').textContent = formatChips(
+      parseInt(document.getElementById('currentBet').dataset.raw || 0)
+    );
+
+    // Side pot pill
+    const sidePill = document.getElementById('sidePotPill');
+    if (totalSide > 0) {
+      sidePill.style.display = '';
+      document.getElementById('sidePotVal').textContent = formatChips(totalSide);
+    } else {
+      sidePill.style.display = 'none';
+    }
+
+    // Center display on table
+    const el = document.getElementById('potDisplay');
+    if (mainPot === 0 && totalSide === 0) { el.innerHTML = ''; return; }
+
+    let html = `<div class="pot-main">팟 ${formatChips(mainPot)}</div>`;
+    sidePots.forEach((sp, i) => {
+      html += `<div class="pot-side">사이드${i + 1} ${formatChips(sp.amount)}</div>`;
+    });
+    el.innerHTML = html;
+  }
+
+  function updateSeats(seats, buttonSeat, actionSeat, sbSeat, bbSeat, currentBet) {
     seatNickMap = {};
     seats.forEach(s => {
       if (s.nickname) seatNickMap[s.seat_no] = s.nickname;
       const wrap = document.getElementById(`seat-${s.seat_no}`);
       if (!wrap) return;
 
-      const isEmpty = s.seat_status === 'EMPTY';
-      const isTurn  = s.seat_no === actionSeat;
-      const isAllin = s.all_in;
-      const isFold  = s.folded;
+      const isEmpty  = s.seat_status === 'EMPTY';
+      const isTurn   = s.seat_no === actionSeat;
+      const isAllin  = s.all_in;
+      const isFold   = s.folded;
+      const toCall   = isTurn ? Math.max(0, currentBet - (s.round_contribution || 0)) : 0;
 
       let cls = 'seat-chip';
-      if (isEmpty)  cls += ' empty';
-      if (isTurn)   cls += ' active-turn';
-      if (isAllin && !isEmpty) cls += ' all-in';
-      if (isFold)   cls += ' folded';
+      if (isEmpty)            cls += ' empty';
+      else if (isTurn)        cls += ' active-turn';
+      else if (isAllin)       cls += ' all-in';
+      else if (isFold)        cls += ' folded';
 
+      // Status line
       let statusLine = '';
       if (!isEmpty) {
-        if (isTurn)   statusLine = '<span style="color:var(--accent);font-size:.62rem;">⏱ 턴</span>';
-        else if (isFold)  statusLine = '<span style="color:var(--text-muted);font-size:.62rem;">폴드</span>';
-        else if (isAllin) statusLine = '<span style="color:var(--warn);font-size:.62rem;">올인</span>';
+        if (isTurn) {
+          const callLabel = toCall > 0
+            ? `<span class="seat-action-call">콜 ${formatChips(toCall)}</span>`
+            : `<span class="seat-action-check">체크?</span>`;
+          statusLine = callLabel;
+        } else if (isFold)  statusLine = `<span class="seat-action-fold">폴드</span>`;
+        else if (isAllin)   statusLine = `<span class="seat-action-allin">올인</span>`;
+        else if (s.round_contribution > 0)
+          statusLine = `<span class="seat-bet-chip">${formatChips(s.round_contribution)}</span>`;
       }
 
       const nick = s.nickname || '-';
       const stackStr = isEmpty ? '' : `<div class="seat-stack">${formatChips(s.stack)}</div>`;
 
-      wrap.querySelector('.seat-chip').outerHTML;
       wrap.innerHTML = `
         <div class="${cls}">
           <div class="seat-no">${s.seat_no}</div>
@@ -141,12 +180,17 @@
 
   // Action type → human-readable
   const ACTION_MAP = {
-    FOLD: { label: '폴드', cls: 'action-fold' },
-    CHECK: { label: '체크', cls: 'action-check' },
-    CALL: { label: '콜', cls: 'action-call' },
-    RAISE: { label: '레이즈', cls: 'action-raise' },
-    ALL_IN: { label: '올인', cls: 'action-allin' },
-    BET: { label: '베팅', cls: 'action-raise' },
+    FOLD:    { label: '폴드',   cls: 'action-fold' },
+    CHECK:   { label: '체크',   cls: 'action-check' },
+    CALL:    { label: '콜',     cls: 'action-call' },
+    RAISE:   { label: '레이즈', cls: 'action-raise' },
+    RAISE_TO:{ label: '레이즈', cls: 'action-raise' },
+    ALL_IN:  { label: '올인',   cls: 'action-allin' },
+    BET:     { label: '베팅',   cls: 'action-raise' },
+    BET_TO:  { label: '베팅',   cls: 'action-raise' },
+    POST_SB: { label: 'SB 포스트', cls: 'action-call' },
+    POST_BB: { label: 'BB 포스트', cls: 'action-call' },
+    TIMEOUT_FOLD: { label: '⏰ 타임아웃 폴드', cls: 'action-fold' },
   };
   const SYSTEM_MAP = {
     HAND_STARTED:  '✦ 핸드 시작',
@@ -154,19 +198,15 @@
     DEAL_FLOP:     '— 플랍 딜',
     DEAL_TURN:     '— 턴 딜',
     DEAL_RIVER:    '— 리버 딜',
-    POST_SB:       'SB 포스트',
-    POST_BB:       'BB 포스트',
-    TIMEOUT_FOLD:  '⏰ 타임아웃 폴드',
   };
 
   function formatAction(a) {
     if (a.is_system) {
-      const label = SYSTEM_MAP[a.action_type] || a.action_type;
-      return { text: label, cls: 'action-system-event' };
+      return { text: SYSTEM_MAP[a.action_type] || a.action_type, cls: 'action-system-event' };
     }
     const info = ACTION_MAP[a.action_type] || { label: a.action_type, cls: '' };
     const nick = seatNickMap[a.actor_seat_no] || `좌석 ${a.actor_seat_no}`;
-    const amount = a.amount ? ` ${formatChips(a.amount)}` : '';
+    const amount = a.amount ? `  ${formatChips(a.amount)}` : '';
     return { text: `${nick}  ${info.label}${amount}`, cls: `action-player ${info.cls}` };
   }
 
@@ -176,7 +216,6 @@
       if (!r.ok) return;
       const data = await r.json();
       if (!data.actions?.length) return;
-
       const feed = document.getElementById('actionFeed');
       feed.innerHTML = '';
       for (const a of [...data.actions].reverse()) {
@@ -202,16 +241,16 @@
       if (s.state_version !== lastVersion) {
         lastVersion = s.state_version;
 
-        const totalPot = (s.pot_view?.main_pot ?? 0) +
-          (s.pot_view?.side_pots?.reduce((a, sp) => a + sp.amount, 0) ?? 0);
+        // Store raw for currentBet display
+        const betEl = document.getElementById('currentBet');
+        betEl.dataset.raw = s.current_bet ?? 0;
+        betEl.textContent = formatChips(s.current_bet ?? 0);
 
-        document.getElementById('totalPot').textContent   = formatChips(totalPot);
-        document.getElementById('currentBet').textContent = formatChips(s.current_bet ?? 0);
-        document.getElementById('potCenter').textContent  = totalPot ? `팟 ${formatChips(totalPot)}` : '';
+        updatePotDisplay(s.pot_view);
+        updateBoard(s.board || []);
 
-        const streetEl = document.getElementById('street');
         const streetLabel = { preflop:'프리플랍', flop:'플랍', turn:'턴', river:'리버', showdown:'쇼다운' };
-        streetEl.textContent = streetLabel[s.street] || (s.street || '-');
+        document.getElementById('street').textContent = streetLabel[s.street] || (s.street || '-');
 
         // Timer
         const timerEl = document.getElementById('timer');
@@ -224,9 +263,14 @@
           timerEl.className = 'pill-value';
         }
 
-        updateBoard(s.board || []);
-        updateSeats(s.seats || [], s.button_seat_no, s.action_seat_no,
-                    s.small_blind_seat_no, s.big_blind_seat_no);
+        updateSeats(
+          s.seats || [],
+          s.button_seat_no,
+          s.action_seat_no,
+          s.small_blind_seat_no,
+          s.big_blind_seat_no,
+          s.current_bet ?? 0,
+        );
         await fetchActions();
       }
 
