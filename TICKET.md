@@ -9,6 +9,46 @@ PROJECT.md 기반 구현 티켓 목록.
 
 ---
 
+# HOTFIX-2 — Rate Limiting
+
+## HF-2: API Rate Limit (slowapi)
+
+**Goal**: 봇의 과도한 폴링/스팸을 방지하고 서버 안정성을 확보한다.
+
+**Deps**: T0.1 (FastAPI app)
+
+**Scope**:
+- `app/middleware/rate_limit.py` 또는 `app/main.py`에 slowapi 적용
+- `pyproject.toml`에 `slowapi` 의존성 추가
+
+**정책**:
+| 대상 | 기준 | 제한 |
+|------|------|------|
+| `/v1/private/*` | account_id (HMAC 인증 후 주입) | 15 req/min |
+| `/v1/public/*` | IP 주소 | 60 req/min |
+| `/admin/*` | 제외 (서버 내부 사용) | 무제한 |
+| `/health`, `/static` | 제외 | 무제한 |
+
+**구현 세부사항**:
+- `slowapi.Limiter` + `slowapi.errors.RateLimitExceeded` 핸들러
+- private 엔드포인트: `request.state.account_id` (HMAC 미들웨어가 주입한 값) 기준으로 key 생성
+- public 엔드포인트: `request.client.host` (IP) 기준
+- 초과 시 `429 Too Many Requests` + `{"error": {"code": "RATE_LIMITED", "message": "Too many requests. Limit: 15/min"}}`
+- `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` 헤더 응답에 포함
+- 백엔드: in-memory (단일 Railway 인스턴스 기준, Redis 불필요)
+
+**AC**:
+- [ ] `pip install slowapi` 의존성 추가
+- [ ] private 엔드포인트에서 동일 account_id로 16번째 요청 시 `429` 반환
+- [ ] public 엔드포인트에서 동일 IP로 61번째 요청 시 `429` 반환
+- [ ] admin 엔드포인트는 rate limit 미적용
+- [ ] 429 응답 body: `{"error": {"code": "RATE_LIMITED", "message": "..."}}`
+- [ ] 단위 테스트: private 15회 통과 → 16회 429
+
+**Commit**: `feat(ratelimit): add per-account 15/min and per-IP 60/min rate limiting`
+
+---
+
 # HOTFIX — 칩 모델 재설계 + 게임 무결성 강화 (완료)
 
 ## HF-1: 칩 계정 자산 모델 + RNG 강화 + 카드 무결성 ✅ 완료

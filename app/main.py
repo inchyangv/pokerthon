@@ -23,6 +23,7 @@ from app.api.health import router as health_router
 from app.api.playground.api import router as playground_api_router
 from app.api.playground.views import router as playground_views_router
 from app.middleware.admin_auth import AdminAuthMiddleware
+from app.middleware.rate_limit import RateLimitMiddleware
 
 
 @asynccontextmanager
@@ -68,6 +69,7 @@ app = FastAPI(
 )
 
 app.add_middleware(AdminAuthMiddleware)
+app.add_middleware(RateLimitMiddleware)  # outermost: runs before AdminAuth
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 app.include_router(admin_views_router)
