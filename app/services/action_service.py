@@ -99,8 +99,14 @@ async def process_action(
         is_system=False,
     )
 
-    # Advance turn
-    await _advance_action(session, hand)
+    await session.flush()
+
+    # Check round completion / street advancement
+    from app.services.round_service import advance_street
+    advanced = await advance_street(session, hand)
+    if not advanced:
+        # Round still in progress; just advance the action seat
+        await _advance_action(session, hand)
 
     await session.commit()
     return action
