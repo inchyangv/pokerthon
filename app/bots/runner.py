@@ -216,6 +216,66 @@ async def _auto_start_hands() -> None:
             logger.exception("Error auto-starting hand at table %d", table.table_no)
 
 
+async def _refill_and_reseat_bots() -> None:
+    """Refill chips and reseat any active bot that is no longer seated."""
+    if not settings.BOT_AUTO_RESEAT:
+        return
+
+    from app.models.account import Account
+    from app.models.table import Table, TableStatus
+    from app.services.chip_service import grant as chip_grant
+    from app.services.bot_service import seat_bot
+
+    async with async_session_factory() as session:
+        # All active bots
+        bots_r = await session.execute(
+            select(BotProfile).where(BotProfile.is_active == True)  # noqa: E712
+        )
+        bots = list(bots_r.scalars().all())
+
+        # Open tables with empty seats
+        tables_r = await session.execute(
+            select(Table).where(Table.status == TableStatus.OPEN).order_by(Table.table_no)
+        )
+        open_tables = list(tables_r.scalars().all())
+
+        for bot in bots:
+            # Skip if already seated
+            seat_r = await session.execute(
+                select(TableSeat).where(
+                    TableSeat.account_id == bot.account_id,
+                    TableSeat.seat_status.in_([SeatStatus.SEATED, SeatStatus.LEAVING_AFTER_HAND]),
+                )
+            )
+            if seat_r.scalar_one_or_none():
+                continue
+
+            # Refill chips if wallet is below buy-in
+            acc_r = await session.execute(select(Account).where(Account.id == bot.account_id))
+            account = acc_r.scalar_one_or_none()
+            if not account:
+                continue
+
+            if account.wallet_balance < settings.TABLE_BUYIN:
+                await chip_grant(session, bot.account_id, settings.BOT_RESEAT_CHIPS, reason_text="bot_reseat")
+                await session.refresh(account)
+
+            # Find a table with an empty seat
+            for table in open_tables:
+                seats_r = await session.execute(
+                    select(TableSeat).where(TableSeat.table_id == table.id)
+                )
+                seats = list(seats_r.scalars().all())
+                if any(s.seat_status == SeatStatus.EMPTY for s in seats):
+                    try:
+                        async with get_table_lock(table.table_no):
+                            await seat_bot(session, bot.id, table.table_no)
+                        logger.info("Bot %s reseated at table %d", bot.display_name, table.table_no)
+                        break
+                    except Exception:
+                        continue
+
+
 async def bot_runner_loop() -> None:
     """Main bot runner loop. Polls all active bots and processes their turns."""
     if not settings.BOT_ENABLED:
@@ -226,6 +286,9 @@ async def bot_runner_loop() -> None:
 
     while True:
         try:
+            # Refill and reseat evicted bots
+            await _refill_and_reseat_bots()
+
             # Auto-start hands on tables with enough players
             await _auto_start_hands()
 

@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     BOT_ACTION_DELAY_MAX: float = 60.0
     BOT_AUTO_SEED: bool = False
     BOT_INITIAL_CHIPS: int = 1000
+    BOT_AUTO_RESEAT: bool = True   # refill chips and reseat evicted bots
+    BOT_RESEAT_CHIPS: int = 1000   # chips granted on each reseat
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
