@@ -107,7 +107,7 @@ async def test_grant_chips_via_ui(client: AsyncClient):
     acc_id = acc_url.rstrip("/").split("/")[-1].split("?")[0]
 
     r2 = await client.post(
-        f"/admin/accounts/{acc_id}/grant",
+        f"/admin/accounts/{acc_id}/grant-form",
         data={"amount": "100", "reason": "test"},
         follow_redirects=True,
     )

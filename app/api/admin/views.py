@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +26,11 @@ _SESSION_VALUE = "authenticated"
 
 def _is_authenticated(request: Request) -> bool:
     return request.cookies.get(_SESSION_COOKIE) == _SESSION_VALUE
+
+
+def _is_api_request(request: Request) -> bool:
+    """True when the request comes from an API client (Bearer token, not browser cookie)."""
+    return bool(request.headers.get("Authorization"))
 
 
 def _redirect_login(next_url: str = "/admin/") -> RedirectResponse:
@@ -91,11 +96,23 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
 
 @router.get("/accounts", response_class=HTMLResponse)
 async def accounts_page(request: Request, session: AsyncSession = Depends(get_session)):
+    result = await session.execute(select(Account).order_by(Account.id.desc()))
+    accounts = result.scalars().all()
+
+    # JSON response for API clients (Bearer auth)
+    if _is_api_request(request):
+        return JSONResponse([
+            {
+                "id": a.id, "nickname": a.nickname,
+                "status": a.status.value, "wallet_balance": a.wallet_balance,
+                "created_at": a.created_at.isoformat() if a.created_at else None,
+            }
+            for a in accounts
+        ])
+
     if not _is_authenticated(request):
         return _redirect_login("/admin/accounts")
 
-    result = await session.execute(select(Account).order_by(Account.id.desc()))
-    accounts = result.scalars().all()
     return templates.TemplateResponse(request, "admin/accounts.html", {
         "request": request, "flash": None, "accounts": accounts,
     })
@@ -148,10 +165,24 @@ async def account_detail(
     account_id: int,
     session: AsyncSession = Depends(get_session),
 ):
+    account = await session.get(Account, account_id)
+
+    # JSON response for API clients (Bearer auth)
+    if _is_api_request(request):
+        if not account:
+            return JSONResponse(
+                {"detail": {"code": "NOT_FOUND", "message": "Account not found"}},
+                status_code=404,
+            )
+        return JSONResponse({
+            "id": account.id, "nickname": account.nickname,
+            "status": account.status.value, "wallet_balance": account.wallet_balance,
+            "created_at": account.created_at.isoformat() if account.created_at else None,
+        })
+
     if not _is_authenticated(request):
         return _redirect_login()
 
-    account = await session.get(Account, account_id)
     if not account:
         return HTMLResponse("Not found", status_code=404)
 
@@ -219,7 +250,7 @@ async def issue_credential(
     )
 
 
-@router.post("/accounts/{account_id}/credentials/revoke")
+@router.post("/accounts/{account_id}/credentials/revoke-form")
 async def revoke_credential(
     request: Request,
     account_id: int,
@@ -239,7 +270,7 @@ async def revoke_credential(
 # Chips
 # ---------------------------------------------------------------------------
 
-@router.post("/accounts/{account_id}/grant")
+@router.post("/accounts/{account_id}/grant-form")
 async def grant_chips(
     request: Request,
     account_id: int,
@@ -258,7 +289,7 @@ async def grant_chips(
     return RedirectResponse(url=f"/admin/accounts/{account_id}", status_code=302)
 
 
-@router.post("/accounts/{account_id}/deduct")
+@router.post("/accounts/{account_id}/deduct-form")
 async def deduct_chips(
     request: Request,
     account_id: int,
@@ -283,11 +314,28 @@ async def deduct_chips(
 
 @router.get("/tables", response_class=HTMLResponse)
 async def tables_page(request: Request, session: AsyncSession = Depends(get_session)):
-    if not _is_authenticated(request):
-        return _redirect_login("/admin/tables")
-
     result = await session.execute(select(Table).order_by(Table.table_no))
     all_tables = result.scalars().all()
+
+    # JSON response for API clients (Bearer auth)
+    if _is_api_request(request):
+        from sqlalchemy.orm import selectinload
+        tables_json = []
+        for t in all_tables:
+            seats_r = await session.execute(select(TableSeat).where(TableSeat.table_id == t.id))
+            seats = seats_r.scalars().all()
+            seated = sum(1 for s in seats if s.seat_status != SeatStatus.EMPTY)
+            tables_json.append({
+                "id": t.id, "table_no": t.table_no, "status": t.status.value,
+                "max_seats": t.max_seats, "small_blind": t.small_blind,
+                "big_blind": t.big_blind, "buy_in": t.buy_in,
+                "seated_count": seated,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+            })
+        return JSONResponse(tables_json)
+
+    if not _is_authenticated(request):
+        return _redirect_login("/admin/tables")
 
     tables_out = []
     for t in all_tables:
@@ -332,7 +380,7 @@ async def create_table_ui(
     return RedirectResponse(url="/admin/tables", status_code=302)
 
 
-@router.post("/tables/{table_no}/pause")
+@router.post("/tables/{table_no}/pause-form")
 async def pause_table_ui(
     request: Request, table_no: int, session: AsyncSession = Depends(get_session)
 ):
@@ -346,7 +394,7 @@ async def pause_table_ui(
     return RedirectResponse(url=f"/admin/tables/{table_no}", status_code=302)
 
 
-@router.post("/tables/{table_no}/resume")
+@router.post("/tables/{table_no}/resume-form")
 async def resume_table_ui(
     request: Request, table_no: int, session: AsyncSession = Depends(get_session)
 ):
@@ -360,7 +408,7 @@ async def resume_table_ui(
     return RedirectResponse(url=f"/admin/tables/{table_no}", status_code=302)
 
 
-@router.post("/tables/{table_no}/close")
+@router.post("/tables/{table_no}/close-form")
 async def close_table_ui(
     request: Request, table_no: int, session: AsyncSession = Depends(get_session)
 ):
@@ -378,11 +426,39 @@ async def close_table_ui(
 async def table_detail_ui(
     request: Request, table_no: int, session: AsyncSession = Depends(get_session)
 ):
+    table_r = await session.execute(select(Table).where(Table.table_no == table_no))
+    table = table_r.scalar_one_or_none()
+
+    # JSON response for API clients (Bearer auth)
+    if _is_api_request(request):
+        if not table:
+            return JSONResponse(
+                {"detail": {"code": "NOT_FOUND", "message": "Table not found"}},
+                status_code=404,
+            )
+        seats_r = await session.execute(
+            select(TableSeat).where(TableSeat.table_id == table.id)
+        )
+        seats = [
+            {
+                "seat_no": s.seat_no,
+                "account_id": s.account_id,
+                "seat_status": s.seat_status.value,
+                "stack": s.stack,
+            }
+            for s in seats_r.scalars().all()
+        ]
+        return JSONResponse({
+            "id": table.id, "table_no": table.table_no, "status": table.status.value,
+            "max_seats": table.max_seats, "small_blind": table.small_blind,
+            "big_blind": table.big_blind, "buy_in": table.buy_in,
+            "seats": seats,
+            "created_at": table.created_at.isoformat() if table.created_at else None,
+        })
+
     if not _is_authenticated(request):
         return _redirect_login()
 
-    table_r = await session.execute(select(Table).where(Table.table_no == table_no))
-    table = table_r.scalar_one_or_none()
     if not table:
         return HTMLResponse("Not found", status_code=404)
 

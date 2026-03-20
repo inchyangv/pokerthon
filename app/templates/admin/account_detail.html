@@ -40,7 +40,7 @@
           <button type="submit" class="btn btn-primary btn-sm">키 발급</button>
         </form>
         {% if credential and credential.status == 'ACTIVE' %}
-        <form method="post" action="/admin/accounts/{{ account.id }}/credentials/revoke">
+        <form method="post" action="/admin/accounts/{{ account.id }}/credentials/revoke-form">
           <button type="submit" class="btn btn-danger btn-sm">키 폐기</button>
         </form>
         {% endif %}
@@ -52,7 +52,7 @@
   <div>
     <div class="card">
       <h2>칩 지급</h2>
-      <form method="post" action="/admin/accounts/{{ account.id }}/grant">
+      <form method="post" action="/admin/accounts/{{ account.id }}/grant-form">
         <div class="form-group">
           <label>금액</label>
           <input type="number" name="amount" min="1" required>
@@ -67,7 +67,7 @@
 
     <div class="card">
       <h2>칩 차감</h2>
-      <form method="post" action="/admin/accounts/{{ account.id }}/deduct">
+      <form method="post" action="/admin/accounts/{{ account.id }}/deduct-form">
         <div class="form-group">
           <label>금액</label>
           <input type="number" name="amount" min="1" required>

@@ -12,12 +12,12 @@
       <p><strong>바이인:</strong> {{ table.buy_in }}</p>
       <div style="display:flex;gap:0.5rem;margin-top:0.5rem;">
         {% if table.status == 'OPEN' %}
-          <form method="post" action="/admin/tables/{{ table.table_no }}/pause"><button type="submit" class="btn btn-sm btn-danger">일시정지</button></form>
+          <form method="post" action="/admin/tables/{{ table.table_no }}/pause-form"><button type="submit" class="btn btn-sm btn-danger">일시정지</button></form>
         {% elif table.status == 'PAUSED' %}
-          <form method="post" action="/admin/tables/{{ table.table_no }}/resume"><button type="submit" class="btn btn-sm btn-primary">재개</button></form>
+          <form method="post" action="/admin/tables/{{ table.table_no }}/resume-form"><button type="submit" class="btn btn-sm btn-primary">재개</button></form>
         {% endif %}
         {% if table.status != 'CLOSED' %}
-          <form method="post" action="/admin/tables/{{ table.table_no }}/close"><button type="submit" class="btn btn-sm btn-danger">종료</button></form>
+          <form method="post" action="/admin/tables/{{ table.table_no }}/close-form"><button type="submit" class="btn btn-sm btn-danger">종료</button></form>
         {% endif %}
       </div>
     </div>
