@@ -23,6 +23,7 @@ from app.middleware.admin_auth import AdminAuthMiddleware
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- Startup ---
+    from app.bots.runner import bot_runner_loop
     from app.database import async_session_factory
     from app.services.recovery_service import recover_in_progress_hands
     from app.tasks.nonce_cleanup import nonce_cleanup_loop
@@ -33,11 +34,12 @@ async def lifespan(app: FastAPI):
 
     timeout_task = asyncio.ensure_future(timeout_checker_loop())
     nonce_task = asyncio.ensure_future(nonce_cleanup_loop())
+    bot_task = asyncio.ensure_future(bot_runner_loop())
 
     yield
 
     # --- Shutdown ---
-    for task in (timeout_task, nonce_task):
+    for task in (timeout_task, nonce_task, bot_task):
         task.cancel()
         try:
             await task
