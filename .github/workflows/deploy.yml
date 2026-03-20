@@ -1,0 +1,50 @@
+name: Deploy to Railway
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test before deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: pip install --upgrade pip && pip install ".[dev]"
+
+      - name: Run tests
+        env:
+          DATABASE_URL: "sqlite+aiosqlite:///./test.db"
+          ADMIN_PASSWORD: "testpassword"
+          APP_ENCRYPTION_KEY: "testsecret1234567890123456789012"
+          ACTION_TIMEOUT_SECONDS: "600"
+          TABLE_BUYIN: "40"
+          SMALL_BLIND: "1"
+          BIG_BLIND: "2"
+        run: pytest tests/ -x -q --tb=short
+
+  deploy:
+    name: Deploy to Railway
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --detach
