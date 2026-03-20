@@ -20,14 +20,27 @@ from app.middleware.admin_auth import AdminAuthMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # --- Startup ---
+    from app.database import async_session_factory
+    from app.services.recovery_service import recover_in_progress_hands
+    from app.tasks.nonce_cleanup import nonce_cleanup_loop
     from app.tasks.timeout_checker import timeout_checker_loop
-    task = asyncio.ensure_future(timeout_checker_loop())
+
+    async with async_session_factory() as session:
+        await recover_in_progress_hands(session)
+
+    timeout_task = asyncio.ensure_future(timeout_checker_loop())
+    nonce_task = asyncio.ensure_future(nonce_cleanup_loop())
+
     yield
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+
+    # --- Shutdown ---
+    for task in (timeout_task, nonce_task):
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(
