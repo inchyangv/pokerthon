@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -95,3 +95,40 @@ async def close_table(session: AsyncSession, table_no: int) -> Table:
     table.status = TableStatus.CLOSED
     await session.commit()
     return await _reload_with_seats(session, table.id)
+
+
+async def delete_table(session: AsyncSession, table_no: int) -> None:
+    """Hard-delete a table and all associated records.
+
+    Deletion order (FK dependencies):
+    1. HandAction  → FK hands.id
+    2. HandPlayer  → FK hands.id
+    3. HandResult  → FK hands.id
+    4. Hand        → FK tables.id
+    5. TableSnapshot → FK tables.id
+    6. TableSeat   → FK tables.id
+    7. Table
+    """
+    from app.models.hand import Hand, HandAction, HandPlayer, HandResult, TableSnapshot
+
+    result = await session.execute(select(Table).where(Table.table_no == table_no))
+    table = result.scalar_one_or_none()
+    if not table:
+        raise LookupError(f"Table {table_no} not found")
+
+    # Collect hand IDs for this table
+    hand_ids_r = await session.execute(
+        select(Hand.id).where(Hand.table_id == table.id)
+    )
+    hand_ids = [row[0] for row in hand_ids_r.all()]
+
+    if hand_ids:
+        await session.execute(delete(HandAction).where(HandAction.hand_id.in_(hand_ids)))
+        await session.execute(delete(HandPlayer).where(HandPlayer.hand_id.in_(hand_ids)))
+        await session.execute(delete(HandResult).where(HandResult.hand_id.in_(hand_ids)))
+        await session.execute(delete(Hand).where(Hand.table_id == table.id))
+
+    await session.execute(delete(TableSnapshot).where(TableSnapshot.table_id == table.id))
+    await session.execute(delete(TableSeat).where(TableSeat.table_id == table.id))
+    await session.delete(table)
+    await session.commit()
