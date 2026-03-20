@@ -112,7 +112,10 @@ async def process_action(
         await session.refresh(hand)
         if hand.street == "showdown":
             from app.services.showdown_service import resolve_showdown
-            await resolve_showdown(session, hand)
+            from app.services.hand_completion import complete_hand
+            result = await resolve_showdown(session, hand)
+            await complete_hand(session, hand, result)
+            return action  # session already committed in complete_hand
 
     await session.commit()
     return action
