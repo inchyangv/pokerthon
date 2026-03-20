@@ -20,6 +20,8 @@ from app.api.public.leaderboard import router as public_leaderboard_router
 from app.api.public.tables import router as public_tables_router
 from app.api.admin.credentials import router as admin_credentials_router
 from app.api.health import router as health_router
+from app.api.playground.api import router as playground_api_router
+from app.api.playground.views import router as playground_views_router
 from app.middleware.admin_auth import AdminAuthMiddleware
 
 
@@ -84,3 +86,5 @@ app.include_router(public_game_state_router)
 app.include_router(public_history_router)
 app.include_router(public_leaderboard_router)
 app.include_router(viewer_router)
+app.include_router(playground_api_router)
+app.include_router(playground_views_router)

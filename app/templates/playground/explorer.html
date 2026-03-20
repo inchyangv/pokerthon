@@ -1,0 +1,149 @@
+{% extends "playground/base.html" %}
+{% block title %}API Explorer — Pokerthon Playground{% endblock %}
+
+{% block content %}
+<div class="page-layout">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="card">
+      <div class="sidebar-group">
+        <div class="sidebar-group-title">내 정보</div>
+        <div class="sidebar-item" data-endpoint="me" onclick="selectEndpoint('me')">
+          <span class="method-badge method-get">GET</span>
+          /v1/private/me
+        </div>
+      </div>
+
+      <div class="sidebar-group">
+        <div class="sidebar-group-title">테이블 조회</div>
+        <div class="sidebar-item" data-endpoint="public-tables" onclick="selectEndpoint('public-tables')">
+          <span class="method-badge method-get">GET</span>
+          /v1/public/tables
+        </div>
+        <div class="sidebar-item" data-endpoint="public-table" onclick="selectEndpoint('public-table')">
+          <span class="method-badge method-get">GET</span>
+          /v1/public/tables/{no}
+        </div>
+        <div class="sidebar-item" data-endpoint="public-state" onclick="selectEndpoint('public-state')">
+          <span class="method-badge method-get">GET</span>
+          /v1/public/tables/{no}/state
+        </div>
+      </div>
+
+      <div class="sidebar-group">
+        <div class="sidebar-group-title">게임 플레이</div>
+        <div class="sidebar-item" data-endpoint="sit" onclick="selectEndpoint('sit')">
+          <span class="method-badge method-post">POST</span>
+          /v1/private/tables/{no}/sit
+        </div>
+        <div class="sidebar-item" data-endpoint="stand" onclick="selectEndpoint('stand')">
+          <span class="method-badge method-post">POST</span>
+          /v1/private/tables/{no}/stand
+        </div>
+        <div class="sidebar-item" data-endpoint="private-state" onclick="selectEndpoint('private-state')">
+          <span class="method-badge method-get">GET</span>
+          /v1/private/tables/{no}/state
+        </div>
+        <div class="sidebar-item" data-endpoint="action" onclick="selectEndpoint('action')">
+          <span class="method-badge method-post">POST</span>
+          /v1/private/tables/{no}/action
+        </div>
+      </div>
+
+      <div class="sidebar-group">
+        <div class="sidebar-group-title">이력 조회</div>
+        <div class="sidebar-item" data-endpoint="hands" onclick="selectEndpoint('hands')">
+          <span class="method-badge method-get">GET</span>
+          /v1/public/tables/{no}/hands
+        </div>
+        <div class="sidebar-item" data-endpoint="hand-detail" onclick="selectEndpoint('hand-detail')">
+          <span class="method-badge method-get">GET</span>
+          /v1/public/tables/{no}/hands/{id}
+        </div>
+        <div class="sidebar-item" data-endpoint="hand-actions" onclick="selectEndpoint('hand-actions')">
+          <span class="method-badge method-get">GET</span>
+          /v1/public/tables/{no}/hands/{id}/actions
+        </div>
+        <div class="sidebar-item" data-endpoint="my-hands" onclick="selectEndpoint('my-hands')">
+          <span class="method-badge method-get">GET</span>
+          /v1/private/me/hands
+        </div>
+      </div>
+
+      <div class="sidebar-group">
+        <div class="sidebar-group-title">리더보드</div>
+        <div class="sidebar-item" data-endpoint="leaderboard" onclick="selectEndpoint('leaderboard')">
+          <span class="method-badge method-get">GET</span>
+          /v1/public/leaderboard
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Panel -->
+  <div class="req-panel">
+    <!-- Credential bar -->
+    <div class="cred-bar">
+      <div class="form-group" style="margin:0">
+        <label>API Key</label>
+        <input type="text" id="cred-api-key" placeholder="pk_live_..." autocomplete="off"
+               oninput="saveCreds()">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>Secret Key</label>
+        <input type="password" id="cred-secret-key" placeholder="sk_live_..." autocomplete="off"
+               oninput="saveCreds()">
+      </div>
+    </div>
+
+    <!-- Endpoint bar -->
+    <div class="endpoint-bar" id="endpoint-bar">
+      <span id="ep-method" class="method-badge method-get">GET</span>
+      <span id="ep-path" class="endpoint-path">/v1/public/tables</span>
+      <span id="ep-desc" class="endpoint-desc">사이드바에서 엔드포인트를 선택하세요</span>
+    </div>
+
+    <!-- Params / body -->
+    <div class="card" id="params-card">
+      <h2 id="params-title">Path / Query 파라미터</h2>
+      <div id="path-params-section"></div>
+      <div id="query-params-section"></div>
+      <div id="body-section" class="hidden">
+        <h3>Request Body (JSON)</h3>
+        <textarea id="req-body" rows="8" style="font-family:monospace"></textarea>
+        <div class="flex gap-2 mt-2">
+          <button class="btn btn-secondary btn-sm" onclick="setPreset('fold')">FOLD</button>
+          <button class="btn btn-secondary btn-sm" onclick="setPreset('call')">CALL</button>
+          <button class="btn btn-secondary btn-sm" onclick="setPreset('raise')">RAISE_TO</button>
+          <button class="btn btn-secondary btn-sm" onclick="setPreset('sit')">SIT</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Send button -->
+    <div>
+      <button class="btn btn-primary" onclick="sendRequest()" id="btn-send">Send Request</button>
+    </div>
+
+    <!-- Response panel -->
+    <div class="resp-panel" id="resp-panel">
+      <div class="resp-header">
+        <span class="text-muted text-sm">응답이 여기에 표시됩니다</span>
+      </div>
+    </div>
+
+    <!-- History -->
+    <div class="card" id="history-card" style="display:none">
+      <h2>요청 히스토리 <span id="history-count" class="badge badge-info" style="font-size:.7rem"></span></h2>
+      <div class="history-list" id="history-list"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/playground.js"></script>
+<script>
+  initExplorer();
+</script>
+{% endblock %}

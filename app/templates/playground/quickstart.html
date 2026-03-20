@@ -1,0 +1,200 @@
+{% extends "playground/base.html" %}
+{% block title %}퀵스타트 가이드 — Pokerthon Playground{% endblock %}
+
+{% block content %}
+<h1 style="font-size:1.25rem;font-weight:700;margin-bottom:.5rem;">퀵스타트 인터랙티브 가이드</h1>
+<p class="text-muted text-sm mb-3">단계별로 API를 체험해보세요. 각 스텝을 순서대로 완료하면 게임에 참여할 수 있습니다.</p>
+
+<!-- Credential bar (shared) -->
+<div class="cred-bar mb-3">
+  <div class="form-group" style="margin:0">
+    <label>API Key</label>
+    <input type="text" id="qs-api-key" placeholder="pk_live_..." autocomplete="off" oninput="qsSaveCreds()">
+  </div>
+  <div class="form-group" style="margin:0">
+    <label>Secret Key</label>
+    <input type="password" id="qs-secret-key" placeholder="sk_live_..." autocomplete="off" oninput="qsSaveCreds()">
+  </div>
+</div>
+
+<div class="qs-layout">
+  <!-- Stepper -->
+  <div class="qs-stepper">
+    <div class="qs-step-indicator" id="qs-stepper"></div>
+  </div>
+
+  <!-- Steps content -->
+  <div id="qs-steps">
+
+    <!-- Step 1: Auth check -->
+    <div class="qs-card" id="qs-step-1">
+      <div class="qs-card-header">
+        <div class="step-num" id="qs-num-1">1</div>
+        <div>
+          <div class="qs-card-title">인증 확인</div>
+          <div class="qs-card-desc">API Key와 Secret Key로 인증이 되는지 확인합니다.</div>
+        </div>
+      </div>
+      <div class="qs-card-body">
+        <p class="text-sm text-muted mb-3"><code class="code-inline">GET /v1/private/me</code>를 호출해서 내 계정 정보를 조회합니다.</p>
+        <button class="btn btn-primary" onclick="qsStep1()">테스트</button>
+        <div id="qs-r1" class="result-box hidden mt-3"></div>
+        <details class="mt-3">
+          <summary class="text-muted text-sm" style="cursor:pointer">코드 예시</summary>
+          <div class="code-tabs mt-2">
+            <div class="code-tab active" onclick="switchTab(this,'qs1-py')">Python</div>
+            <div class="code-tab" onclick="switchTab(this,'qs1-curl')">cURL</div>
+          </div>
+          <div id="qs1-py" class="code-panel active">
+            <pre class="code-block" id="qs1-py-code">import hmac, hashlib, time, uuid, requests
+
+API_KEY = "pk_live_..."
+SECRET_KEY = "sk_live_..."
+
+def sign(method, path, body=b""):
+    signing_key = hashlib.sha256(SECRET_KEY.encode()).hexdigest()
+    ts = str(int(time.time()))
+    nonce = str(uuid.uuid4())
+    body_hash = hashlib.sha256(body).hexdigest()
+    canonical = f"{ts}\n{nonce}\n{method}\n{path}\n\n{body_hash}"
+    sig = hmac.new(signing_key.encode(), canonical.encode(), hashlib.sha256).hexdigest()
+    return {"X-API-KEY": API_KEY, "X-TIMESTAMP": ts, "X-NONCE": nonce, "X-SIGNATURE": sig}
+
+resp = requests.get("http://HOST/v1/private/me", headers=sign("GET", "/v1/private/me"))
+print(resp.json())</pre>
+          </div>
+          <div id="qs1-curl" class="code-panel">
+            <pre class="code-block" id="qs1-curl-code"># playground/signature 에서 헤더를 생성한 후:
+curl -X GET 'http://HOST/v1/private/me' \
+  -H 'X-API-KEY: pk_live_...' \
+  -H 'X-TIMESTAMP: ...' \
+  -H 'X-NONCE: ...' \
+  -H 'X-SIGNATURE: ...'</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <!-- Step 2: Table list -->
+    <div class="qs-card" id="qs-step-2">
+      <div class="qs-card-header">
+        <div class="step-num" id="qs-num-2">2</div>
+        <div>
+          <div class="qs-card-title">테이블 확인</div>
+          <div class="qs-card-desc">열린 테이블 목록을 조회합니다. 인증 없이 접근 가능합니다.</div>
+        </div>
+      </div>
+      <div class="qs-card-body">
+        <p class="text-sm text-muted mb-3"><code class="code-inline">GET /v1/public/tables</code>로 모든 테이블을 조회합니다.</p>
+        <button class="btn btn-primary" onclick="qsStep2()">조회</button>
+        <div id="qs-r2" class="result-box hidden mt-3"></div>
+      </div>
+    </div>
+
+    <!-- Step 3: Sit -->
+    <div class="qs-card" id="qs-step-3">
+      <div class="qs-card-header">
+        <div class="step-num" id="qs-num-3">3</div>
+        <div>
+          <div class="qs-card-title">착석</div>
+          <div class="qs-card-desc">테이블에 착석합니다. 40칩이 지갑에서 차감됩니다.</div>
+        </div>
+      </div>
+      <div class="qs-card-body">
+        <div class="form-group">
+          <label>테이블 번호</label>
+          <select id="qs-table-no">
+            <option value="">-- Step 2를 먼저 실행하세요 --</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>좌석 번호 <span class="text-muted">(선택사항, 비워두면 자동 배정)</span></label>
+          <input type="number" id="qs-seat-no" min="1" max="9" placeholder="1~9">
+        </div>
+        <button class="btn btn-primary" onclick="qsStep3()">착석</button>
+        <div id="qs-r3" class="result-box hidden mt-3"></div>
+      </div>
+    </div>
+
+    <!-- Step 4: State -->
+    <div class="qs-card" id="qs-step-4">
+      <div class="qs-card-header">
+        <div class="step-num" id="qs-num-4">4</div>
+        <div>
+          <div class="qs-card-title">게임 상태 확인</div>
+          <div class="qs-card-desc">내 홀카드와 현재 가능한 액션을 확인합니다.</div>
+        </div>
+      </div>
+      <div class="qs-card-body">
+        <p class="text-sm text-muted mb-3"><code class="code-inline">GET /v1/private/tables/{no}/state</code></p>
+        <button class="btn btn-primary" onclick="qsStep4()">상태 조회</button>
+        <div id="qs-r4" class="result-box hidden mt-3"></div>
+        <div class="mt-3">
+          <details>
+            <summary class="text-muted text-sm" style="cursor:pointer">Long-Polling 안내</summary>
+            <div class="code-block mt-2" style="font-size:.8rem">
+GET /v1/private/tables/{no}/state?wait=true&version={current_version}
+
+내 턴이 아닐 때 wait=true를 붙이면, 상태가 바뀔 때까지
+서버가 최대 30초간 대기한 후 응답합니다.
+폴링 루프에서 사용하면 효율적입니다.
+            </div>
+          </details>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 5: Action -->
+    <div class="qs-card" id="qs-step-5">
+      <div class="qs-card-header">
+        <div class="step-num" id="qs-num-5">5</div>
+        <div>
+          <div class="qs-card-title">액션 제출</div>
+          <div class="qs-card-desc">내 턴일 때 액션을 제출합니다.</div>
+        </div>
+      </div>
+      <div class="qs-card-body">
+        <p class="text-sm text-muted mb-3">Step 4에서 확인한 <code class="code-inline">legal_actions</code>를 참고해서 액션을 선택하세요.</p>
+        <div id="qs-legal-actions" class="mb-3">
+          <div class="text-muted text-sm">Step 4를 먼저 실행해서 가능한 액션을 확인하세요.</div>
+        </div>
+        <div class="form-group" id="qs-raise-group" style="display:none">
+          <label>RAISE_TO 금액</label>
+          <input type="number" id="qs-raise-amount" min="2">
+        </div>
+        <div id="qs-r5" class="result-box hidden mt-3"></div>
+      </div>
+    </div>
+
+    <!-- Step 6: Stand -->
+    <div class="qs-card" id="qs-step-6">
+      <div class="qs-card-header">
+        <div class="step-num" id="qs-num-6">6</div>
+        <div>
+          <div class="qs-card-title">이석</div>
+          <div class="qs-card-desc">테이블에서 일어납니다. 남은 스택이 지갑으로 반환됩니다.</div>
+        </div>
+      </div>
+      <div class="qs-card-body">
+        <p class="text-sm text-muted mb-3">핸드가 진행 중이면 현재 핸드 종료 후 이석 처리됩니다.</p>
+        <button class="btn btn-secondary" onclick="qsStep6()">이석</button>
+        <div id="qs-r6" class="result-box hidden mt-3"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Console log -->
+<div class="card mt-3">
+  <h2>API 호출 로그</h2>
+  <div class="console-log" id="qs-console"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/playground.js"></script>
+<script>
+  initQuickstart();
+</script>
+{% endblock %}

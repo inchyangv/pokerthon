@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Pokerthon API Playground{% endblock %}</title>
+  <link rel="stylesheet" href="/static/playground.css">
+</head>
+<body>
+<nav>
+  <a href="/playground/" class="brand">🂡 Pokerthon API Playground</a>
+  <a href="/playground/" {% if request.url.path == '/playground/' %}class="active"{% endif %}>API Explorer</a>
+  <a href="/playground/signature" {% if request.url.path == '/playground/signature' %}class="active"{% endif %}>서명 생성기</a>
+  <a href="/playground/quickstart" {% if request.url.path == '/playground/quickstart' %}class="active"{% endif %}>퀵스타트</a>
+  <span class="nav-right">
+    <a href="/docs" target="_blank">API 문서 ↗</a>
+  </span>
+</nav>
+<div class="container">
+  {% block content %}{% endblock %}
+</div>
+{% block scripts %}{% endblock %}
+</body>
+</html>
