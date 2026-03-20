@@ -15,6 +15,7 @@ from app.api.private.state import router as private_state_router
 from app.api.private.tables import router as private_tables_router
 from app.api.public.game_state import router as public_game_state_router
 from app.api.public.history import router as public_history_router
+from app.api.public.leaderboard import router as public_leaderboard_router
 from app.api.public.tables import router as public_tables_router
 from app.api.admin.credentials import router as admin_credentials_router
 from app.api.health import router as health_router
@@ -80,3 +81,4 @@ app.include_router(private_state_router)
 app.include_router(public_tables_router)
 app.include_router(public_game_state_router)
 app.include_router(public_history_router)
+app.include_router(public_leaderboard_router)
