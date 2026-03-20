@@ -25,6 +25,7 @@ from app.middleware.admin_auth import AdminAuthMiddleware
 async def lifespan(app: FastAPI):
     # --- Startup ---
     from app.bots.runner import bot_runner_loop
+    from app.bots.seed import seed_bots
     from app.database import async_session_factory
     from app.services.recovery_service import recover_in_progress_hands
     from app.tasks.nonce_cleanup import nonce_cleanup_loop
@@ -32,6 +33,13 @@ async def lifespan(app: FastAPI):
 
     async with async_session_factory() as session:
         await recover_in_progress_hands(session)
+
+    try:
+        async with async_session_factory() as session:
+            await seed_bots(session)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Bot seed failed — continuing startup")
 
     timeout_task = asyncio.ensure_future(timeout_checker_loop())
     nonce_task = asyncio.ensure_future(nonce_cleanup_loop())
