@@ -151,27 +151,68 @@ td a:hover { text-decoration: underline; }
 .rank-silver { color: var(--silver); font-weight: 700; }
 .rank-bronze { color: var(--bronze); font-weight: 700; }
 
-/* Poker Table */
-.poker-table-wrap {
+/* ── Info Bar (live table top strip) ── */
+.info-bar {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1.5rem;
+  gap: .75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.info-pill {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: .45rem .9rem;
+  flex: 1;
+  min-width: 110px;
+  text-align: center;
+}
+
+.info-pill .pill-label {
+  font-size: .7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.info-pill .pill-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--accent);
+  margin-top: .1rem;
+}
+
+.info-pill .pill-value.warn { color: var(--warn); }
+.info-pill .pill-value.danger { color: var(--danger); animation: pulse 1s infinite; }
+
+/* ── Poker Table Wrap ── */
+.poker-table-wrap {
+  position: relative;
+  width: 820px;
+  height: 460px;
+  margin: 0 auto 1.5rem;
 }
 
 .poker-table {
-  position: relative;
-  width: 680px;
-  height: 340px;
+  position: absolute;
+  width: 580px;
+  height: 290px;
+  top: 85px;
+  left: 120px;
   background: radial-gradient(ellipse at center, #2e7d32 60%, #1b5e20 100%);
   border-radius: 50%;
-  border: 6px solid #4e342e;
-  box-shadow: 0 0 0 3px #3e2723, inset 0 0 60px rgba(0,0,0,.3);
-  margin: 80px auto;
+  border: 8px solid #4e342e;
+  box-shadow:
+    0 0 0 4px #3e2723,
+    0 0 40px rgba(0,0,0,.6),
+    inset 0 0 60px rgba(0,0,0,.3);
 }
 
-@media (max-width: 750px) {
-  .poker-table { width: 340px; height: 170px; margin: 50px auto; }
+@media (max-width: 860px) {
+  .poker-table-wrap { width: 100%; height: 340px; }
+  .poker-table { width: 65%; height: 200px; top: 65px; left: 17.5%; }
 }
 
 .board-center {
@@ -204,38 +245,79 @@ td a:hover { text-decoration: underline; }
 
 .pot-info { color: #fff; font-size: .9rem; margin-top: .4rem; }
 
-/* Seat positions around table (9 seats) */
+/* ── Seat positions around table (9 seats) ── */
+/* Positions are center-anchored via transform: translate(-50%,-50%) */
 .seat-container {
   position: absolute;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: .2rem;
+  gap: .25rem;
+  transform: translate(-50%, -50%);
+}
+
+/* 9 seat coordinates (% of wrap 820×460) */
+.seat-pos-1 { top: 93%; left: 50%; }   /* bottom center */
+.seat-pos-2 { top: 82%; left: 79%; }   /* bottom right */
+.seat-pos-3 { top: 52%; left: 97%; }   /* right */
+.seat-pos-4 { top: 18%; left: 84%; }   /* top right */
+.seat-pos-5 { top:  5%; left: 64%; }   /* top center-right */
+.seat-pos-6 { top:  5%; left: 36%; }   /* top center-left */
+.seat-pos-7 { top: 18%; left: 16%; }   /* top left */
+.seat-pos-8 { top: 52%; left:  3%; }   /* left */
+.seat-pos-9 { top: 82%; left: 21%; }   /* bottom left */
+
+@media (max-width: 860px) {
+  .seat-pos-1 { top: 90%; left: 50%; }
+  .seat-pos-2 { top: 78%; left: 80%; }
+  .seat-pos-3 { top: 50%; left: 97%; }
+  .seat-pos-4 { top: 15%; left: 83%; }
+  .seat-pos-5 { top:  3%; left: 64%; }
+  .seat-pos-6 { top:  3%; left: 36%; }
+  .seat-pos-7 { top: 15%; left: 17%; }
+  .seat-pos-8 { top: 50%; left:  3%; }
+  .seat-pos-9 { top: 78%; left: 20%; }
 }
 
 .seat-chip {
-  width: 80px;
-  background: var(--surface);
+  width: 84px;
+  background: rgba(26,46,26,.95);
   border: 2px solid var(--border);
   border-radius: 8px;
   padding: .3rem .4rem;
   text-align: center;
-  font-size: .7rem;
+  font-size: .68rem;
+  backdrop-filter: blur(4px);
+  transition: border-color .2s, box-shadow .2s;
 }
 
-.seat-chip.active-turn { border-color: var(--accent); box-shadow: 0 0 8px var(--accent); }
-.seat-chip.folded { opacity: .4; }
-.seat-chip.all-in { border-color: var(--warn); }
-.seat-chip.empty  { border-style: dashed; color: var(--text-muted); }
+.seat-chip.active-turn {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px var(--accent), 0 0 24px rgba(76,175,80,.3);
+  animation: glow-turn 1.2s ease-in-out infinite alternate;
+}
 
-.seat-chip .seat-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.seat-chip .seat-stack { color: var(--accent); }
+@keyframes glow-turn {
+  from { box-shadow: 0 0 8px var(--accent); }
+  to   { box-shadow: 0 0 18px var(--accent), 0 0 36px rgba(76,175,80,.4); }
+}
+
+.seat-chip.folded  { opacity: .35; }
+.seat-chip.all-in  { border-color: var(--warn); box-shadow: 0 0 8px rgba(251,140,0,.4); }
+.seat-chip.empty   { border-style: dashed; color: var(--text-muted); background: transparent; }
+
+.seat-chip .seat-no   { font-size: .6rem; color: var(--text-muted); }
+.seat-chip .seat-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 76px; }
+.seat-chip .seat-stack { color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: .7rem; }
+
+.seat-markers { display: flex; gap: .2rem; justify-content: center; }
 
 .seat-marker {
-  font-size: .65rem;
+  font-size: .6rem;
   font-weight: 700;
   padding: .1rem .3rem;
   border-radius: 3px;
+  line-height: 1.3;
 }
 
 .marker-d  { background: #f9a825; color: #000; }
@@ -253,14 +335,20 @@ td a:hover { text-decoration: underline; }
 }
 
 .action-item {
-  padding: .2rem .4rem;
-  font-size: .8rem;
-  border-bottom: 1px solid var(--border);
+  padding: .25rem .5rem;
+  font-size: .82rem;
+  border-bottom: 1px solid rgba(255,255,255,.04);
 }
 
 .action-item:last-child { border-bottom: none; }
-.action-system { color: var(--text-muted); font-style: italic; }
-.action-player { color: var(--text); }
+.action-system       { color: var(--text-muted); font-style: italic; }
+.action-system-event { color: var(--text-muted); font-style: italic; text-align: center; letter-spacing: .05em; }
+.action-player  { color: var(--text); }
+.action-fold    { color: #9e9e9e; }
+.action-check   { color: #66bb6a; }
+.action-call    { color: #64b5f6; }
+.action-raise   { color: var(--warn); font-weight: 600; }
+.action-allin   { color: var(--danger); font-weight: 700; }
 
 /* Mini leaderboard */
 .mini-lb td { font-size: .85rem; padding: .4rem .6rem; }
