@@ -11,6 +11,14 @@ class Settings(BaseSettings):
     SMALL_BLIND: int = 1
     BIG_BLIND: int = 2
 
+    # Bot settings
+    BOT_ENABLED: bool = True
+    BOT_POLL_INTERVAL: float = 2.0
+    BOT_ACTION_DELAY_MIN: float = 1.0
+    BOT_ACTION_DELAY_MAX: float = 3.0
+    BOT_AUTO_SEED: bool = False
+    BOT_INITIAL_CHIPS: int = 1000
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
