@@ -1,0 +1,207 @@
+{% extends "viewer/base.html" %}
+{% block title %}테이블 {{ table_no }} — Pokerthon{% endblock %}
+{% block content %}
+
+<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;">
+  <h1>테이블 {{ table_no }}</h1>
+  <a href="/viewer/tables/{{ table_no }}/hands" class="btn btn-secondary" style="margin-left:auto;">핸드 히스토리 →</a>
+</div>
+
+<!-- Status bar -->
+<div id="statusBar" style="margin-bottom:1rem;font-size:.9rem;color:var(--text-muted);">
+  연결 중...
+</div>
+
+<!-- Pot & Bet info -->
+<div style="display:flex;gap:1rem;margin-bottom:1rem;flex-wrap:wrap;">
+  <div class="card" style="flex:1;min-width:150px;">
+    <div style="font-size:.8rem;color:var(--text-muted);">총 팟</div>
+    <div id="totalPot" style="font-size:1.4rem;font-weight:700;color:var(--accent);">0</div>
+  </div>
+  <div class="card" style="flex:1;min-width:150px;">
+    <div style="font-size:.8rem;color:var(--text-muted);">현재 베팅</div>
+    <div id="currentBet" style="font-size:1.4rem;font-weight:700;">0</div>
+  </div>
+  <div class="card" style="flex:1;min-width:150px;">
+    <div style="font-size:.8rem;color:var(--text-muted);">스트리트</div>
+    <div id="street" style="font-size:1.4rem;font-weight:700;">-</div>
+  </div>
+  <div class="card" style="flex:1;min-width:150px;">
+    <div style="font-size:.8rem;color:var(--text-muted);">액션 시간 제한</div>
+    <div id="timer" style="font-size:1.4rem;font-weight:700;">-</div>
+  </div>
+</div>
+
+<!-- Board Cards -->
+<div class="card" style="margin-bottom:1rem;text-align:center;">
+  <div id="boardCards" class="board-cards" style="justify-content:center;gap:.5rem;padding:.5rem 0;">
+    <div class="playing-card empty">?</div>
+    <div class="playing-card empty">?</div>
+    <div class="playing-card empty">?</div>
+    <div class="playing-card empty">?</div>
+    <div class="playing-card empty">?</div>
+  </div>
+</div>
+
+<!-- Seats Table -->
+<div class="card" style="margin-bottom:1rem;">
+  <h2>좌석 현황</h2>
+  <table id="seatsTable">
+    <thead>
+      <tr>
+        <th>좌석</th><th>닉네임</th><th>스택</th><th>상태</th><th>마커</th>
+      </tr>
+    </thead>
+    <tbody id="seatsBody">
+      <tr><td colspan="5" style="text-align:center;color:var(--text-muted);">로딩 중...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Action Feed -->
+<div>
+  <h2>액션 피드</h2>
+  <div class="action-feed" id="actionFeed">
+    <div class="action-item action-system">대기 중...</div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const tableNo = {{ table_no }};
+  let lastVersion = -1;
+  let pollInterval = 2000;
+  let retryDelay = 1000;
+
+  const SUIT_SYMBOLS = { s: '♠', h: '♥', d: '♦', c: '♣' };
+  const SUIT_CLASSES  = { s: 'spades', h: 'hearts', d: 'diamonds', c: 'clubs' };
+
+  function cardHtml(c) {
+    if (!c) return '<div class="playing-card empty">?</div>';
+    const rank = c[0], suit = c[1];
+    const sym = SUIT_SYMBOLS[suit] || suit;
+    return `<div class="playing-card ${SUIT_CLASSES[suit]}">${rank}${sym}</div>`;
+  }
+
+  function updateBoard(board) {
+    const el = document.getElementById('boardCards');
+    const cards = Array.from({ length: 5 }, (_, i) => cardHtml(board[i]));
+    el.innerHTML = cards.join('');
+  }
+
+  function updateSeats(seats, buttonSeat, actionSeat, smallBlindSeat, bigBlindSeat) {
+    const tbody = document.getElementById('seatsBody');
+    if (!seats.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">착석자 없음</td></tr>';
+      return;
+    }
+    tbody.innerHTML = seats.map(s => {
+      const isAction = s.seat_no === actionSeat;
+      const nick = s.nickname || '-';
+      let status = s.seat_status === 'EMPTY' ? '빈 자리' : '착석';
+      if (s.folded) status = '폴드';
+      if (s.all_in) status = '올인';
+      if (isAction) status = '⏱ 턴';
+
+      let markers = '';
+      if (s.seat_no === buttonSeat) markers += '<span class="seat-marker marker-d">D</span> ';
+      if (s.seat_no === smallBlindSeat) markers += '<span class="seat-marker marker-sb">SB</span> ';
+      if (s.seat_no === bigBlindSeat) markers += '<span class="seat-marker marker-bb">BB</span> ';
+
+      const rowStyle = isAction ? 'background:rgba(76,175,80,.1);' : '';
+      return `<tr style="${rowStyle}">
+        <td>${s.seat_no}</td>
+        <td>${nick}${s.is_bot ? ' 🤖' : ''}</td>
+        <td>${s.stack}</td>
+        <td>${status}</td>
+        <td>${markers}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function addActionLog(msg, isSystem = false) {
+    const feed = document.getElementById('actionFeed');
+    const div = document.createElement('div');
+    div.className = `action-item ${isSystem ? 'action-system' : 'action-player'}`;
+    div.textContent = msg;
+    feed.insertBefore(div, feed.firstChild);
+    // Limit to 50 entries
+    while (feed.children.length > 50) feed.removeChild(feed.lastChild);
+  }
+
+  async function fetchActions() {
+    try {
+      const r = await fetch(`/v1/public/tables/${tableNo}/hands/latest/actions?limit=20`);
+      if (r.ok) {
+        const data = await r.json();
+        // We only add new actions (simplified: just show last 20)
+        if (data.actions && data.actions.length) {
+          const feed = document.getElementById('actionFeed');
+          feed.innerHTML = '';
+          for (const a of [...data.actions].reverse()) {
+            const msg = a.is_system
+              ? `[시스템] ${a.action_type}${a.amount ? ' ' + a.amount : ''}`
+              : `[좌석 ${a.actor_seat_no}] ${a.action_type}${a.amount ? ' ' + a.amount : ''}`;
+            addActionLog(msg, a.is_system);
+          }
+        }
+      }
+    } catch(e) {}
+  }
+
+  async function poll() {
+    try {
+      const r = await fetch(`/v1/public/tables/${tableNo}/state`);
+      if (!r.ok) {
+        document.getElementById('statusBar').textContent = `오류: HTTP ${r.status}`;
+        return;
+      }
+      const s = await r.json();
+
+      if (s.state_version !== lastVersion) {
+        lastVersion = s.state_version;
+
+        document.getElementById('totalPot').textContent =
+          (s.pot_view?.main_pot ?? 0) + (s.pot_view?.side_pots?.reduce((a,sp) => a + sp.amount, 0) ?? 0);
+        document.getElementById('currentBet').textContent = s.current_bet ?? 0;
+        document.getElementById('street').textContent = s.street || '-';
+
+        if (s.action_deadline_at) {
+          const deadline = new Date(s.action_deadline_at);
+          const secs = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+          document.getElementById('timer').textContent = secs + 's';
+        } else {
+          document.getElementById('timer').textContent = '-';
+        }
+
+        updateBoard(s.board || []);
+
+        // Enrich seats with is_bot (not in public state, so skip)
+        updateSeats(
+          s.seats || [],
+          s.button_seat_no,
+          s.action_seat_no,
+          s.small_blind_seat_no,
+          s.big_blind_seat_no,
+        );
+
+        await fetchActions();
+      }
+
+      document.getElementById('statusBar').textContent =
+        `v${s.state_version} | 스트리트: ${s.street || '대기'} | ${new Date().toLocaleTimeString()}`;
+
+      pollInterval = s.street ? 2000 : 10000;
+      retryDelay = 1000;
+    } catch(e) {
+      document.getElementById('statusBar').textContent = '연결 오류 — 재시도 중...';
+      retryDelay = Math.min(retryDelay * 2, 30000);
+    }
+    setTimeout(poll, pollInterval);
+  }
+
+  poll();
+</script>
+{% endblock %}

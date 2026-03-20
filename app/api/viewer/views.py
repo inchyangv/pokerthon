@@ -17,6 +17,22 @@ router = APIRouter(prefix="/viewer", tags=["viewer"])
 templates = Jinja2Templates(directory="app/templates")
 
 
+@router.get("/tables/{table_no}", response_class=HTMLResponse)
+async def table_live(
+    request: Request,
+    table_no: int,
+    session: AsyncSession = Depends(get_session),
+):
+    table_result = await session.execute(select(Table).where(Table.table_no == table_no))
+    table = table_result.scalar_one_or_none()
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found")
+
+    return templates.TemplateResponse(request, "viewer/table_live.html", {
+        "table_no": table_no,
+    })
+
+
 @router.get("/", response_class=HTMLResponse)
 async def lobby(request: Request, session: AsyncSession = Depends(get_session)):
     tables_result = await session.execute(select(Table).order_by(Table.table_no))
