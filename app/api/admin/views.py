@@ -1,4 +1,4 @@
-"""Admin web UI — HTML views for accounts, credentials, and chips."""
+"""Admin web UI — HTML views for accounts, credentials, chips, tables, and games."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, Request, Response
@@ -12,8 +12,10 @@ from app.database import get_session
 from app.models.account import Account
 from app.models.chip import ChipLedger
 from app.models.credential import ApiCredential, CredentialStatus
+from app.models.hand import Hand, HandPlayer, HandStatus
 from app.models.table import SeatStatus, Table, TableSeat
 from app.services import chip_service, credential_service
+from app.services.history_service import get_hand_actions
 
 router = APIRouter(prefix="/admin", tags=["admin-ui"])
 templates = Jinja2Templates(directory="app/templates")
@@ -273,3 +275,295 @@ async def deduct_chips(
         return RedirectResponse(url=f"/admin/accounts/{account_id}?error={e}", status_code=302)
 
     return RedirectResponse(url=f"/admin/accounts/{account_id}", status_code=302)
+
+
+# ---------------------------------------------------------------------------
+# Tables
+# ---------------------------------------------------------------------------
+
+@router.get("/tables", response_class=HTMLResponse)
+async def tables_page(request: Request, session: AsyncSession = Depends(get_session)):
+    if not _is_authenticated(request):
+        return _redirect_login("/admin/tables")
+
+    result = await session.execute(select(Table).order_by(Table.table_no))
+    all_tables = result.scalars().all()
+
+    tables_out = []
+    for t in all_tables:
+        # Count seated
+        seats_r = await session.execute(select(TableSeat).where(TableSeat.table_id == t.id))
+        seats = seats_r.scalars().all()
+        seated = sum(1 for s in seats if s.seat_status != SeatStatus.EMPTY)
+
+        # Active hand street
+        hand_r = await session.execute(
+            select(Hand).where(Hand.table_id == t.id, Hand.status == HandStatus.IN_PROGRESS)
+        )
+        hand = hand_r.scalar_one_or_none()
+        tables_out.append({
+            "table_no": t.table_no,
+            "status": t.status.value,
+            "seated_count": seated,
+            "max_seats": t.max_seats,
+            "current_hand_street": hand.street if hand else None,
+        })
+
+    return templates.TemplateResponse(request, "admin/tables.html", {
+        "flash": None, "tables": tables_out,
+    })
+
+
+@router.post("/tables/create")
+async def create_table_ui(
+    request: Request,
+    table_no: int = Form(...),
+    session: AsyncSession = Depends(get_session),
+):
+    if not _is_authenticated(request):
+        return _redirect_login()
+
+    from app.services.table_service import create_table
+    try:
+        await create_table(session, table_no)
+    except ValueError as e:
+        pass  # Duplicate — just redirect
+
+    return RedirectResponse(url="/admin/tables", status_code=302)
+
+
+@router.post("/tables/{table_no}/pause")
+async def pause_table_ui(
+    request: Request, table_no: int, session: AsyncSession = Depends(get_session)
+):
+    if not _is_authenticated(request):
+        return _redirect_login()
+    from app.services.table_service import pause_table
+    try:
+        await pause_table(session, table_no)
+    except Exception:
+        pass
+    return RedirectResponse(url=f"/admin/tables/{table_no}", status_code=302)
+
+
+@router.post("/tables/{table_no}/resume")
+async def resume_table_ui(
+    request: Request, table_no: int, session: AsyncSession = Depends(get_session)
+):
+    if not _is_authenticated(request):
+        return _redirect_login()
+    from app.services.table_service import resume_table
+    try:
+        await resume_table(session, table_no)
+    except Exception:
+        pass
+    return RedirectResponse(url=f"/admin/tables/{table_no}", status_code=302)
+
+
+@router.post("/tables/{table_no}/close")
+async def close_table_ui(
+    request: Request, table_no: int, session: AsyncSession = Depends(get_session)
+):
+    if not _is_authenticated(request):
+        return _redirect_login()
+    from app.services.table_service import close_table
+    try:
+        await close_table(session, table_no)
+    except Exception:
+        pass
+    return RedirectResponse(url=f"/admin/tables/{table_no}", status_code=302)
+
+
+@router.get("/tables/{table_no}", response_class=HTMLResponse)
+async def table_detail_ui(
+    request: Request, table_no: int, session: AsyncSession = Depends(get_session)
+):
+    if not _is_authenticated(request):
+        return _redirect_login()
+
+    table_r = await session.execute(select(Table).where(Table.table_no == table_no))
+    table = table_r.scalar_one_or_none()
+    if not table:
+        return HTMLResponse("Not found", status_code=404)
+
+    seats_r = await session.execute(select(TableSeat).where(TableSeat.table_id == table.id))
+    raw_seats = list(seats_r.scalars().all())
+
+    acc_ids = [s.account_id for s in raw_seats if s.account_id]
+    nickname_map: dict[int, str] = {}
+    if acc_ids:
+        acc_r = await session.execute(select(Account).where(Account.id.in_(acc_ids)))
+        for a in acc_r.scalars().all():
+            nickname_map[a.id] = a.nickname
+
+    seats_out = [
+        {
+            "seat_no": s.seat_no,
+            "nickname": nickname_map.get(s.account_id) if s.account_id else None,
+            "stack": s.stack,
+            "seat_status": s.seat_status.value,
+        }
+        for s in sorted(raw_seats, key=lambda x: x.seat_no)
+    ]
+
+    # Active hand with admin hole cards
+    hand_r = await session.execute(
+        select(Hand).where(Hand.table_id == table.id, Hand.status == HandStatus.IN_PROGRESS)
+    )
+    hand = hand_r.scalar_one_or_none()
+    current_hand_data = None
+    if hand:
+        import json as _json
+        players_r = await session.execute(
+            select(HandPlayer).where(HandPlayer.hand_id == hand.id)
+        )
+        hp_list = list(players_r.scalars().all())
+        player_data = []
+        for hp in hp_list:
+            player_data.append({
+                "seat_no": hp.seat_no,
+                "nickname": nickname_map.get(hp.account_id),
+                "hole_cards": _json.loads(hp.hole_cards_json),
+                "folded": hp.folded,
+                "all_in": hp.all_in,
+            })
+
+        from app.core.pot_calculator import calculate_pots
+        pot_input = [
+            {"seat_no": p["seat_no"], "hand_contribution": hp.hand_contribution, "folded": hp.folded}
+            for p, hp in zip(player_data, hp_list)
+        ]
+        raw_pot = calculate_pots(pot_input)
+        total_pot = raw_pot["main_pot"] + sum(sp["amount"] for sp in raw_pot["side_pots"])
+
+        current_hand_data = {
+            "hand_no": hand.hand_no,
+            "street": hand.street,
+            "board": _json.loads(hand.board_json),
+            "pot": total_pot,
+            "current_bet": hand.current_bet,
+            "players": player_data,
+        }
+
+    # Completed hand history (last 20)
+    hist_r = await session.execute(
+        select(Hand)
+        .where(Hand.table_id == table.id, Hand.status == HandStatus.FINISHED)
+        .order_by(Hand.id.desc())
+        .limit(20)
+    )
+    from sqlalchemy.orm import selectinload
+    hist_r = await session.execute(
+        select(Hand)
+        .where(Hand.table_id == table.id, Hand.status == HandStatus.FINISHED)
+        .options(selectinload(Hand.result))
+        .order_by(Hand.id.desc())
+        .limit(20)
+    )
+    finished_hands = list(hist_r.scalars().all())
+
+    import json as _json2
+    hand_history = []
+    for h in finished_hands:
+        result_data = {}
+        if h.result:
+            try:
+                result_data = _json2.loads(h.result.result_json)
+            except Exception:
+                pass
+        awards = result_data.get("awards", {})
+        winners = [int(k) for k in awards.keys()]
+        hand_history.append({
+            "hand_id": h.id,
+            "hand_no": h.hand_no,
+            "board": _json2.loads(h.board_json),
+            "winners": winners,
+            "started_at": h.started_at,
+            "finished_at": h.finished_at,
+        })
+
+    return templates.TemplateResponse(request, "admin/table_detail.html", {
+        "flash": None,
+        "table": table,
+        "seats": seats_out,
+        "current_hand": current_hand_data,
+        "hand_history": hand_history,
+    })
+
+
+@router.get("/tables/{table_no}/hands/{hand_id}", response_class=HTMLResponse)
+async def hand_detail_ui(
+    request: Request,
+    table_no: int,
+    hand_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    if not _is_authenticated(request):
+        return _redirect_login()
+
+    table_r = await session.execute(select(Table).where(Table.table_no == table_no))
+    table = table_r.scalar_one_or_none()
+    if not table:
+        return HTMLResponse("Not found", status_code=404)
+
+    from sqlalchemy.orm import selectinload
+    hand_r = await session.execute(
+        select(Hand)
+        .where(Hand.id == hand_id, Hand.table_id == table.id)
+        .options(selectinload(Hand.result))
+    )
+    hand = hand_r.scalar_one_or_none()
+    if not hand:
+        return HTMLResponse("Not found", status_code=404)
+
+    import json as _json
+    players_r = await session.execute(
+        select(HandPlayer).where(HandPlayer.hand_id == hand_id)
+    )
+    hp_list = list(players_r.scalars().all())
+
+    acc_ids = [p.account_id for p in hp_list]
+    acc_r = await session.execute(select(Account).where(Account.id.in_(acc_ids)))
+    nm = {a.id: a.nickname for a in acc_r.scalars().all()}
+
+    players_out = [
+        {
+            "seat_no": p.seat_no,
+            "nickname": nm.get(p.account_id),
+            "hole_cards": _json.loads(p.hole_cards_json),
+            "starting_stack": p.starting_stack,
+            "ending_stack": p.ending_stack,
+            "folded": p.folded,
+        }
+        for p in hp_list
+    ]
+
+    result_data = {}
+    if hand.result:
+        try:
+            result_data = _json.loads(hand.result.result_json)
+        except Exception:
+            pass
+    awards = result_data.get("awards", {})
+    result_out = {
+        "winners": [int(k) for k in awards.keys()],
+        "pot_summary": result_data.get("pot_view", {}),
+    } if result_data else None
+
+    actions = await get_hand_actions(session, hand_id)
+
+    return templates.TemplateResponse(request, "admin/hand_detail.html", {
+        "flash": None,
+        "table_no": table_no,
+        "hand": {
+            "hand_no": hand.hand_no,
+            "status": hand.status.value,
+            "board": _json.loads(hand.board_json),
+            "button_seat_no": hand.button_seat_no,
+            "started_at": hand.started_at,
+            "finished_at": hand.finished_at,
+        },
+        "players": players_out,
+        "result": result_out,
+        "actions": actions,
+    })

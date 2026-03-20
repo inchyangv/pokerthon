@@ -1,0 +1,49 @@
+{% extends "admin/base.html" %}
+{% block title %}테이블 목록 — Pokerthon Admin{% endblock %}
+{% block content %}
+<h1>테이블 목록</h1>
+<div class="card" style="margin-bottom:1rem;">
+  <h2>테이블 생성</h2>
+  <form method="post" action="/admin/tables/create" style="display:flex;gap:0.5rem;align-items:flex-end;">
+    <div class="form-group" style="flex:1;margin:0;">
+      <label for="table_no">테이블 번호</label>
+      <input type="number" id="table_no" name="table_no" min="1" required>
+    </div>
+    <button type="submit" class="btn btn-primary">생성</button>
+  </form>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th>테이블 No</th>
+      <th>상태</th>
+      <th>착석/최대</th>
+      <th>진행 중 핸드</th>
+      <th>액션</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in tables %}
+    <tr>
+      <td><a href="/admin/tables/{{ t.table_no }}" style="color:#3498db;">{{ t.table_no }}</a></td>
+      <td><span class="badge badge-{{ t.status.lower() }}">{{ t.status }}</span></td>
+      <td>{{ t.seated_count }} / {{ t.max_seats }}</td>
+      <td>{{ '✓ ' + t.current_hand_street if t.current_hand_street else '—' }}</td>
+      <td style="display:flex;gap:0.4rem;">
+        {% if t.status == 'OPEN' %}
+          <form method="post" action="/admin/tables/{{ t.table_no }}/pause"><button type="submit" class="btn btn-sm btn-danger">일시정지</button></form>
+        {% elif t.status == 'PAUSED' %}
+          <form method="post" action="/admin/tables/{{ t.table_no }}/resume"><button type="submit" class="btn btn-sm btn-primary">재개</button></form>
+        {% endif %}
+        {% if t.status != 'CLOSED' %}
+          <form method="post" action="/admin/tables/{{ t.table_no }}/close"><button type="submit" class="btn btn-sm btn-danger">종료</button></form>
+        {% endif %}
+        <a href="/admin/tables/{{ t.table_no }}" class="btn btn-sm btn-primary">상세</a>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" style="text-align:center;color:#999;">테이블 없음</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

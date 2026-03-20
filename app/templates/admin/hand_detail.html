@@ -1,0 +1,69 @@
+{% extends "admin/base.html" %}
+{% block title %}Hand #{{ hand.hand_no }} — Pokerthon Admin{% endblock %}
+{% block content %}
+<a href="/admin/tables/{{ table_no }}" style="color:#3498db;">← 테이블 {{ table_no }}</a>
+<h1>Hand #{{ hand.hand_no }}</h1>
+<div class="grid-2">
+  <div class="card">
+    <h2>핸드 정보</h2>
+    <p><strong>상태:</strong> {{ hand.status }}</p>
+    <p><strong>보드:</strong> {{ hand.board | join(' ') or '—' }}</p>
+    <p><strong>버튼 좌석:</strong> {{ hand.button_seat_no }}</p>
+    <p><strong>시작:</strong> {{ hand.started_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+    {% if hand.finished_at %}
+    <p><strong>종료:</strong> {{ hand.finished_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h2>결과</h2>
+    {% if result %}
+      <p><strong>승자(좌석):</strong> {{ result.winners | join(', ') }}</p>
+      <p><strong>팟 요약:</strong></p>
+      <pre style="font-size:0.8rem;background:#f5f5f5;padding:0.5rem;border-radius:3px;">{{ result.pot_summary | tojson(indent=2) }}</pre>
+    {% else %}
+      <p style="color:#999;">결과 없음</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- 참가 플레이어 (관리자 = 홀카드 포함) -->
+<div class="card">
+  <h2>참가 플레이어</h2>
+  <table>
+    <thead><tr><th>좌석</th><th>닉네임</th><th>홀카드</th><th>시작 스택</th><th>최종 스택</th><th>결과</th></tr></thead>
+    <tbody>
+      {% for p in players %}
+      <tr>
+        <td>{{ p.seat_no }}</td>
+        <td>{{ p.nickname or '—' }}</td>
+        <td><code>{{ p.hole_cards | join(' ') if p.hole_cards else '—' }}</code></td>
+        <td>{{ p.starting_stack }}</td>
+        <td>{{ p.ending_stack }}</td>
+        <td>{{ 'FOLD' if p.folded else 'SHOWDOWN' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- 액션 로그 -->
+<div class="card">
+  <h2>액션 로그</h2>
+  <table>
+    <thead><tr><th>Seq</th><th>Street</th><th>좌석</th><th>닉네임</th><th>액션</th><th>금액</th><th>시스템</th></tr></thead>
+    <tbody>
+      {% for a in actions %}
+      <tr>
+        <td>{{ a.seq }}</td>
+        <td>{{ a.street or '—' }}</td>
+        <td>{{ a.actor_seat or '—' }}</td>
+        <td>{{ a.actor_nickname or '—' }}</td>
+        <td>{{ a.action_type }}</td>
+        <td>{{ a.amount or '—' }}</td>
+        <td>{{ '✓' if a.is_system_action else '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

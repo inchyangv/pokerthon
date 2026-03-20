@@ -1,0 +1,91 @@
+{% extends "admin/base.html" %}
+{% block title %}테이블 {{ table.table_no }} — Pokerthon Admin{% endblock %}
+{% block content %}
+<a href="/admin/tables" style="color:#3498db;">← 테이블 목록</a>
+<h1>테이블 {{ table.table_no }}</h1>
+<div class="grid-2">
+  <div>
+    <div class="card">
+      <h2>테이블 정보</h2>
+      <p><strong>상태:</strong> <span class="badge badge-{{ table.status.lower() }}">{{ table.status }}</span></p>
+      <p><strong>블라인드:</strong> {{ table.small_blind }} / {{ table.big_blind }}</p>
+      <p><strong>바이인:</strong> {{ table.buy_in }}</p>
+      <div style="display:flex;gap:0.5rem;margin-top:0.5rem;">
+        {% if table.status == 'OPEN' %}
+          <form method="post" action="/admin/tables/{{ table.table_no }}/pause"><button type="submit" class="btn btn-sm btn-danger">일시정지</button></form>
+        {% elif table.status == 'PAUSED' %}
+          <form method="post" action="/admin/tables/{{ table.table_no }}/resume"><button type="submit" class="btn btn-sm btn-primary">재개</button></form>
+        {% endif %}
+        {% if table.status != 'CLOSED' %}
+          <form method="post" action="/admin/tables/{{ table.table_no }}/close"><button type="submit" class="btn btn-sm btn-danger">종료</button></form>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>좌석 현황</h2>
+      <table>
+        <thead><tr><th>좌석</th><th>플레이어</th><th>스택</th><th>상태</th></tr></thead>
+        <tbody>
+          {% for seat in seats %}
+          <tr>
+            <td>{{ seat.seat_no }}</td>
+            <td>{{ seat.nickname or '—' }}</td>
+            <td>{{ seat.stack }}</td>
+            <td>{{ seat.seat_status }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div>
+    {% if current_hand %}
+    <div class="card">
+      <h2>현재 핸드 (Hand #{{ current_hand.hand_no }})</h2>
+      <p><strong>Street:</strong> {{ current_hand.street }}</p>
+      <p><strong>Board:</strong> {{ current_hand.board | join(', ') or '—' }}</p>
+      <p><strong>팟:</strong> {{ current_hand.pot }}</p>
+      <p><strong>현재 베팅:</strong> {{ current_hand.current_bet }}</p>
+      <h3>홀카드 (관리자 전용)</h3>
+      <table>
+        <thead><tr><th>좌석</th><th>닉네임</th><th>홀카드</th><th>상태</th></tr></thead>
+        <tbody>
+          {% for p in current_hand.players %}
+          <tr>
+            <td>{{ p.seat_no }}</td>
+            <td>{{ p.nickname or '—' }}</td>
+            <td><code>{{ p.hole_cards | join(' ') or '—' }}</code></td>
+            <td>{{ 'FOLD' if p.folded else ('ALL-IN' if p.all_in else 'ACTIVE') }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- 완료된 핸드 이력 -->
+<div class="card">
+  <h2>완료된 핸드 이력 (최근 20개)</h2>
+  <table>
+    <thead><tr><th>Hand #</th><th>보드</th><th>승자(좌석)</th><th>시작</th><th>종료</th><th></th></tr></thead>
+    <tbody>
+      {% for h in hand_history %}
+      <tr>
+        <td>{{ h.hand_no }}</td>
+        <td>{{ h.board | join(' ') or '—' }}</td>
+        <td>{{ h.winners | join(', ') }}</td>
+        <td>{{ h.started_at.strftime('%H:%M:%S') }}</td>
+        <td>{{ h.finished_at.strftime('%H:%M:%S') if h.finished_at else '—' }}</td>
+        <td><a href="/admin/tables/{{ table.table_no }}/hands/{{ h.hand_id }}" class="btn btn-sm btn-primary">상세</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" style="text-align:center;color:#999;">이력 없음</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
