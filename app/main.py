@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.api.admin.accounts import router as admin_accounts_router
+from app.api.viewer.views import router as viewer_router
 from app.api.admin.bots import router as admin_bots_router
 from app.api.admin.chips import router as admin_chips_router
 from app.api.admin.tables import router as admin_tables_router
@@ -82,3 +83,4 @@ app.include_router(public_tables_router)
 app.include_router(public_game_state_router)
 app.include_router(public_history_router)
 app.include_router(public_leaderboard_router)
+app.include_router(viewer_router)

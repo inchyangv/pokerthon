@@ -1,0 +1,68 @@
+{% extends "viewer/base.html" %}
+{% block title %}로비 — Pokerthon{% endblock %}
+{% block content %}
+
+<h1>로비</h1>
+
+<!-- Table Grid -->
+<h2>테이블</h2>
+<div class="table-grid" id="tableGrid">
+{% if tables %}
+  {% for t in tables %}
+  <a href="/viewer/tables/{{ t.table_no }}" class="table-card">
+    <div class="table-no">테이블 {{ t.table_no }}</div>
+    <div style="margin:.4rem 0;">
+      {% if t.status == 'OPEN' %}<span class="badge badge-open">OPEN</span>
+      {% elif t.status == 'PAUSED' %}<span class="badge badge-paused">PAUSED</span>
+      {% else %}<span class="badge badge-closed">CLOSED</span>{% endif %}
+      {% if t.has_active_hand %}<span class="badge badge-live">LIVE</span>{% endif %}
+    </div>
+    <div class="table-info">
+      착석 {{ t.seated_count }}/{{ t.max_seats }} &nbsp;|&nbsp; 블라인드 {{ t.small_blind }}/{{ t.big_blind }}
+    </div>
+  </a>
+  {% endfor %}
+{% else %}
+  <p style="color:var(--text-muted);">테이블이 없습니다.</p>
+{% endif %}
+</div>
+
+<!-- Mini Leaderboard -->
+<div style="margin-top:2rem;">
+  <h2>리더보드 TOP 5 &nbsp;<a href="/viewer/leaderboard" style="font-size:.8rem;color:var(--accent);">전체 보기 →</a></h2>
+  <table class="mini-lb">
+    <thead><tr><th>#</th><th>닉네임</th><th>총 칩</th></tr></thead>
+    <tbody id="miniLbBody">
+    {% for item in leaderboard %}
+    <tr>
+      <td>
+        {% if item.rank == 1 %}<span class="rank-gold">🥇 1</span>
+        {% elif item.rank == 2 %}<span class="rank-silver">🥈 2</span>
+        {% elif item.rank == 3 %}<span class="rank-bronze">🥉 3</span>
+        {% else %}{{ item.rank }}{% endif %}
+      </td>
+      <td>{{ item.nickname }}{% if item.is_bot %} 🤖{% endif %}</td>
+      <td>{{ item.total_chips }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  async function refresh() {
+    try {
+      const [tablesRes, lbRes] = await Promise.all([
+        fetch('/v1/public/tables'),
+        fetch('/v1/public/leaderboard?limit=5'),
+      ]);
+      if (!tablesRes.ok || !lbRes.ok) return;
+      // Simple reload for now — could do DOM update
+    } catch(e) {}
+  }
+  setInterval(refresh, 30000);
+</script>
+{% endblock %}
