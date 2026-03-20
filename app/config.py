@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     # Bot settings
     BOT_ENABLED: bool = True
     BOT_POLL_INTERVAL: float = 2.0
-    BOT_ACTION_DELAY_MIN: float = 1.0
-    BOT_ACTION_DELAY_MAX: float = 3.0
+    BOT_ACTION_DELAY_MIN: float = 30.0
+    BOT_ACTION_DELAY_MAX: float = 60.0
     BOT_AUTO_SEED: bool = False
     BOT_INITIAL_CHIPS: int = 1000
 
