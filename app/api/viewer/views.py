@@ -1,6 +1,8 @@
 """Spectator viewer routes — public, no auth required."""
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -12,6 +14,20 @@ from app.database import get_session
 from app.models.hand import Hand, HandStatus
 from app.models.table import SeatStatus, Table, TableSeat
 from app.services.leaderboard_service import get_leaderboard
+
+
+def _fmt_ts(ts) -> str:
+    """Format a datetime to 'MM/DD HH:mm' or return '-'."""
+    if not ts:
+        return "-"
+    if isinstance(ts, datetime):
+        return ts.strftime("%m/%d %H:%M")
+    if isinstance(ts, str):
+        try:
+            return datetime.fromisoformat(ts).strftime("%m/%d %H:%M")
+        except (ValueError, TypeError):
+            return ts
+    return str(ts)
 
 router = APIRouter(prefix="/viewer", tags=["viewer"])
 templates = Jinja2Templates(directory="app/templates")
@@ -92,19 +108,24 @@ async def hand_detail_viewer(
         p["profit"] = p.get("ending_stack", 0) - p.get("starting_stack", 0)
 
     winner_seats = detail.get("winners", [])
+    pot_summary = detail.get("pot_summary", {})
 
     hand = {
         "hand_no": detail.get("hand_no"),
         "board": detail.get("board", []),
-        "started_at": detail.get("started_at"),
-        "finished_at": detail.get("finished_at"),
+        "started_at": _fmt_ts(detail.get("started_at")),
+        "finished_at": _fmt_ts(detail.get("finished_at")),
     }
+
+    result_data = None
+    if winner_seats or pot_summary:
+        result_data = {"winner_seats": winner_seats, "pot_summary": pot_summary}
 
     return templates.TemplateResponse(request, "viewer/hand_detail.html", {
         "table_no": table_no,
         "hand": hand,
         "players": players,
-        "result": {"winner_seats": winner_seats} if winner_seats else None,
+        "result": result_data,
         "actions": actions,
     })
 
@@ -139,8 +160,8 @@ async def hand_list_viewer(
             "hand_no": h["hand_no"],
             "board": board,
             "total_pot": total_pot,
-            "started_at": h.get("started_at"),
-            "finished_at": h.get("finished_at"),
+            "started_at": _fmt_ts(h.get("started_at")),
+            "finished_at": _fmt_ts(h.get("finished_at")),
         })
 
     return templates.TemplateResponse(request, "viewer/hand_list.html", {

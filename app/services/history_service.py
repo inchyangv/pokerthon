@@ -160,6 +160,7 @@ async def get_hand_actions(
             "amount": a.amount,
             "amount_to": a.amount_to,
             "is_system_action": a.is_system_action,
+            "payload": json.loads(a.payload_json) if a.payload_json else None,
             "timestamp": a.created_at,
         }
         for a in actions
@@ -257,3 +258,24 @@ async def get_my_hands(
 
     next_cursor = hands[-1].id if has_more and hands else None
     return {"items": items, "next_cursor": next_cursor, "has_more": has_more}
+
+
+async def get_latest_hand_actions(
+    session: AsyncSession,
+    table_id: int,
+    limit: int = 20,
+) -> dict[str, Any]:
+    """Return actions from the latest hand (in-progress or most recently finished)."""
+    hand_result = await session.execute(
+        select(Hand)
+        .where(Hand.table_id == table_id)
+        .order_by(Hand.id.desc())
+        .limit(1)
+    )
+    hand = hand_result.scalar_one_or_none()
+    if not hand:
+        return {"actions": []}
+    actions = await get_hand_actions(session, hand.id)
+    if limit and len(actions) > limit:
+        actions = actions[-limit:]
+    return {"actions": actions}

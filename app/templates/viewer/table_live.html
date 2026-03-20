@@ -45,6 +45,7 @@
         <div class="playing-card empty">?</div>
       </div>
       <div class="pot-display" id="potDisplay"></div>
+      <div class="table-idle-msg" id="idleMsg" style="display:none;">핸드 대기 중...</div>
     </div>
   </div>
 
@@ -78,8 +79,10 @@
   let pollInterval = 2000;
   let retryDelay = 1000;
   let seatNickMap = {};
-  let deadlineMs = null;      // action deadline timestamp (ms)
-  let timerTick = null;       // setInterval handle
+  let deadlineMs = null;
+  let timerTick = null;
+  let lastHandId = null;
+  let showdownCards = {};   // seat_no -> [card1, card2]
 
   const SUIT_SYMBOLS = { s: '♠', h: '♥', d: '♦', c: '♣' };
   const SUIT_CLASSES  = { s: 'spades', h: 'hearts', d: 'diamonds', c: 'clubs' };
@@ -88,6 +91,12 @@
     if (!c) return '<div class="playing-card empty">?</div>';
     const rank = c.slice(0, -1), suit = c.slice(-1);
     return `<div class="playing-card ${SUIT_CLASSES[suit] || ''}">${rank}${SUIT_SYMBOLS[suit] || suit}</div>`;
+  }
+
+  function microCardHtml(c) {
+    if (!c) return '';
+    const rank = c.slice(0, -1), suit = c.slice(-1);
+    return `<div class="playing-card micro ${SUIT_CLASSES[suit] || ''}">${rank}${SUIT_SYMBOLS[suit] || suit}</div>`;
   }
 
   function updateBoard(board) {
@@ -105,7 +114,6 @@
       parseInt(document.getElementById('currentBet').dataset.raw || 0)
     );
 
-    // Side pot pill
     const sidePill = document.getElementById('sidePotPill');
     if (totalSide > 0) {
       sidePill.style.display = '';
@@ -114,7 +122,6 @@
       sidePill.style.display = 'none';
     }
 
-    // Center display on table
     const el = document.getElementById('potDisplay');
     if (mainPot === 0 && totalSide === 0) { el.innerHTML = ''; return; }
 
@@ -144,7 +151,6 @@
       else if (isAllin)       cls += ' all-in';
       else if (isFold)        cls += ' folded';
 
-      // Status line
       let statusLine = '';
       if (!isEmpty) {
         if (isTurn) {
@@ -158,6 +164,12 @@
           statusLine = `<span class="seat-bet-chip">${formatChips(s.round_contribution)}</span>`;
       }
 
+      // V14: Showdown hole cards
+      const holeCards = showdownCards[s.seat_no];
+      const holeHtml = (holeCards && !isEmpty)
+        ? `<div class="seat-hole-cards">${holeCards.map(c => microCardHtml(c)).join('')}</div>`
+        : '';
+
       const nick = s.nickname || '-';
       const stackStr = isEmpty ? '' : `<div class="seat-stack">${formatChips(s.stack)}</div>`;
 
@@ -167,6 +179,7 @@
           <div class="seat-name">${isEmpty ? '빈 자리' : nick}</div>
           ${stackStr}
           ${statusLine}
+          ${holeHtml}
         </div>
         <div class="seat-markers">
           ${s.seat_no === buttonSeat ? '<span class="seat-marker marker-d">D</span>' : ''}
@@ -177,7 +190,21 @@
     });
   }
 
-  // Action type → human-readable
+  // V14: Fetch hole cards from last finished hand
+  async function fetchShowdownCards(handId) {
+    try {
+      const r = await fetch(`/v1/public/tables/${tableNo}/hands/${handId}`);
+      if (!r.ok) return;
+      const data = await r.json();
+      showdownCards = {};
+      for (const p of (data.players || [])) {
+        if (p.hole_cards && p.hole_cards.length) {
+          showdownCards[p.seat_no] = p.hole_cards;
+        }
+      }
+    } catch(e) {}
+  }
+
   const ACTION_MAP = {
     FOLD:    { label: '폴드',   cls: 'action-fold' },
     CHECK:   { label: '체크',   cls: 'action-check' },
@@ -187,26 +214,62 @@
     ALL_IN:  { label: '올인',   cls: 'action-allin' },
     BET:     { label: '베팅',   cls: 'action-raise' },
     BET_TO:  { label: '베팅',   cls: 'action-raise' },
-    POST_SB: { label: 'SB 포스트', cls: 'action-call' },
-    POST_BB: { label: 'BB 포스트', cls: 'action-call' },
-    TIMEOUT_FOLD: { label: '⏰ 타임아웃 폴드', cls: 'action-fold' },
+    POST_SB: { label: 'SB', cls: 'action-call' },
+    POST_BB: { label: 'BB', cls: 'action-call' },
+    TIMEOUT_FOLD: { label: '타임아웃 폴드', cls: 'action-fold' },
   };
   const SYSTEM_MAP = {
-    HAND_STARTED:  '✦ 핸드 시작',
-    HAND_FINISHED: '✦ 핸드 종료',
-    DEAL_FLOP:     '— 플랍 딜',
-    DEAL_TURN:     '— 턴 딜',
-    DEAL_RIVER:    '— 리버 딜',
+    HAND_STARTED:  '핸드 시작',
+    HAND_FINISHED: '핸드 종료',
+    DEAL_FLOP:     '플랍 오픈',
+    DEAL_TURN:     '턴 오픈',
+    DEAL_RIVER:    '리버 오픈',
+  };
+  const RANK_KR = {
+    'Royal Flush':'로열 플러시','Straight Flush':'스트레이트 플러시',
+    'Four of a Kind':'포카드','Full House':'풀하우스','Flush':'플러시',
+    'Straight':'스트레이트','Three of a Kind':'트리플',
+    'Two Pair':'투 페어','One Pair':'원 페어','High Card':'하이 카드',
   };
 
+  function cardText(c) {
+    if (!c) return '?';
+    const rank = c.slice(0, -1), suit = c.slice(-1);
+    return `${rank}${SUIT_SYMBOLS[suit] || suit}`;
+  }
+
+  function seatLabel(seatNo, nickname) {
+    const name = nickname || seatNickMap[seatNo];
+    return name ? `${name} (${seatNo}번)` : `${seatNo}번 좌석`;
+  }
+
   function formatAction(a) {
-    if (a.is_system) {
+    // SHOWDOWN — cards + hand ranking
+    if (a.action_type === 'SHOWDOWN' && a.payload?.players) {
+      const details = a.payload.players.map(p => {
+        const name = seatNickMap[p.seat_no] || `${p.seat_no}번`;
+        const cards = p.hole_cards.map(cardText).join(' ');
+        const rank = RANK_KR[p.hand_rank_name] || p.hand_rank_name;
+        return `${name} [${cards}] ${rank}`;
+      }).join('  /  ');
+      return { text: `🃏 쇼다운: ${details}`, cls: 'action-system-event' };
+    }
+    // POT_AWARDED
+    if (a.action_type === 'POT_AWARDED' && a.payload) {
+      const p = a.payload;
+      const type = p.type === 'fold_win' ? '폴드 승리' : p.type === 'main_pot' ? '메인 팟' : '사이드 팟';
+      const winners = (p.winners || []).map(w => seatLabel(w)).join(', ');
+      return { text: `💰 ${type} ${formatChips(p.amount || 0)} → ${winners}`, cls: 'action-system-event' };
+    }
+    // Other system actions
+    if (a.is_system_action) {
       return { text: SYSTEM_MAP[a.action_type] || a.action_type, cls: 'action-system-event' };
     }
+    // Player actions
     const info = ACTION_MAP[a.action_type] || { label: a.action_type, cls: '' };
-    const nick = seatNickMap[a.actor_seat_no] || `좌석 ${a.actor_seat_no}`;
+    const label = seatLabel(a.actor_seat, a.actor_nickname);
     const amount = a.amount ? `  ${formatChips(a.amount)}` : '';
-    return { text: `${nick}  ${info.label}${amount}`, cls: `action-player ${info.cls}` };
+    return { text: `${label}  ${info.label}${amount}`, cls: `action-player ${info.cls}` };
   }
 
   async function fetchActions() {
@@ -216,6 +279,10 @@
       const data = await r.json();
       if (!data.actions?.length) return;
       const feed = document.getElementById('actionFeed');
+
+      // V7: Check if user is near bottom before update
+      const wasAtBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40;
+
       feed.innerHTML = '';
       for (const a of [...data.actions].reverse()) {
         const { text, cls } = formatAction(a);
@@ -223,6 +290,11 @@
         div.className = `action-item ${cls}`;
         div.textContent = text;
         feed.appendChild(div);
+      }
+
+      // V7: Auto-scroll if user was at bottom
+      if (wasAtBottom) {
+        feed.scrollTop = feed.scrollHeight;
       }
     } catch(e) {}
   }
@@ -249,7 +321,6 @@
       if (s.state_version !== lastVersion) {
         lastVersion = s.state_version;
 
-        // Store raw for currentBet display
         const betEl = document.getElementById('currentBet');
         betEl.dataset.raw = s.current_bet ?? 0;
         betEl.textContent = formatChips(s.current_bet ?? 0);
@@ -260,7 +331,7 @@
         const streetLabel = { preflop:'프리플랍', flop:'플랍', turn:'턴', river:'리버', showdown:'쇼다운' };
         document.getElementById('street').textContent = streetLabel[s.street] || (s.street || '-');
 
-        // Timer — store deadline and let tick() handle display
+        // Timer
         if (timerTick) clearInterval(timerTick);
         if (s.action_deadline_at) {
           deadlineMs = new Date(s.action_deadline_at).getTime();
@@ -271,6 +342,27 @@
           const timerEl = document.getElementById('timer');
           timerEl.textContent = '-';
           timerEl.className = 'pill-value';
+        }
+
+        // V14: Detect hand transition for showdown cards
+        const curHandId = s.hand_id;
+        if (curHandId !== lastHandId) {
+          if (lastHandId && !curHandId) {
+            // Hand just finished — fetch hole cards
+            await fetchShowdownCards(lastHandId);
+          } else if (curHandId) {
+            // New hand started — clear showdown cards
+            showdownCards = {};
+          }
+          lastHandId = curHandId;
+        }
+
+        // V8: Idle message
+        const idleMsg = document.getElementById('idleMsg');
+        if (!s.street) {
+          idleMsg.style.display = '';
+        } else {
+          idleMsg.style.display = 'none';
         }
 
         updateSeats(

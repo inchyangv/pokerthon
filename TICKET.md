@@ -1858,6 +1858,198 @@ PROJECT.md 기반 구현 티켓 목록.
 
 ---
 
+# M10 — 뷰어 UI 리파인 (2차)
+
+V1~V6에서 기본 구조와 시각 요소를 잡았고, 이 마일스톤에서는 관전 경험의 완성도를 높인다.
+모든 티켓은 V1~V6 완료 후 병렬 진행 가능.
+
+---
+
+## V7: 액션 피드 자동 스크롤 + 최신순 정렬
+
+**Goal**: 새 액션이 들어올 때 피드가 자동으로 최신 항목으로 스크롤되어 사용자가 직접 내리지 않아도 된다.
+
+**Deps**: V2
+
+**Scope**:
+- `table_live.html`의 `fetchActions()` 함수에서 DOM 갱신 후 `feed.scrollTop = feed.scrollHeight` 호출
+- 최신 액션이 아래에 위치하므로 아래로 스크롤
+- 사용자가 수동으로 위로 스크롤한 상태에서는 자동 스크롤을 억제 (스크롤 위치 감지)
+
+**AC**:
+- [ ] 새 액션 도착 시 피드가 자동으로 맨 아래로 스크롤
+- [ ] 사용자가 위로 스크롤 중일 때는 자동 스크롤 비활성화
+- [ ] 사용자가 다시 맨 아래로 돌아오면 자동 스크롤 재활성화
+
+**Commit**: `feat(viewer): auto-scroll action feed to latest entry`
+
+---
+
+## V8: 핸드 미진행 시 테이블 빈 상태 안내
+
+**Goal**: 핸드가 진행 중이 아닐 때 테이블 중앙에 "대기 중" 메시지를 표시하여 빈 테이블과 로딩 중을 구분한다.
+
+**Deps**: V1
+
+**Scope**:
+- `table_live.html`의 `poll()` 함수에서 `s.street`이 null/빈 값이면 보드 카드 영역 대신 대기 메시지 표시
+- `potDisplay` 아래에 `<div class="table-idle-msg" id="idleMsg">핸드 대기 중...</div>` 추가
+- CSS: `.table-idle-msg { color: rgba(255,255,255,.5); font-size: .85rem; margin-top: .5rem; }`
+- 핸드가 시작되면 숨김
+
+**AC**:
+- [ ] 핸드 미진행 시 테이블 중앙에 "핸드 대기 중..." 텍스트 표시
+- [ ] 핸드 시작 시 텍스트 사라짐
+- [ ] 보드 카드 빈 슬롯(?) 대신 깔끔한 빈 상태
+
+**Commit**: `feat(viewer): show idle message on table when no hand is active`
+
+---
+
+## V9: 핸드 상세 — 액션에 닉네임 표시
+
+**Goal**: hand_detail.html의 액션 타임라인에서 "좌석 X" 대신 실제 닉네임을 표시한다.
+
+**Deps**: V3
+
+**Scope**:
+- `hand_detail.html`에서 `players` 리스트로부터 seat_no→nickname 매핑 dict 생성 (Jinja2)
+- 액션 렌더링에서 `좌석 {{ a.actor_seat_no }}` 대신 `{{ nick_map.get(a.actor_seat_no, '좌석 ' ~ a.actor_seat_no) }}` 사용
+- 닉네임을 볼드 처리
+
+**AC**:
+- [ ] 액션 타임라인에 닉네임 표시 (예: "player_1 레이즈 100")
+- [ ] 닉네임이 없는 좌석은 "좌석 X" 폴백
+- [ ] 기존 색상 코딩 유지
+
+**Commit**: `feat(viewer): show nicknames in hand detail action timeline`
+
+---
+
+## V10: 핸드 상세 — 팟 분배 상세 정보
+
+**Goal**: hand_detail.html의 팟 분배 섹션에 승자 좌석뿐 아니라 각 팟의 금액과 수혜자를 표시한다.
+
+**Deps**: V9
+
+**Scope**:
+- 백엔드 `viewer/views.py`의 hand_detail 엔드포인트에서 `pot_distribution` 데이터 전달
+- `hand_detail.html` 팟 분배 카드에 각 팟(메인팟/사이드팟)의 금액, 수혜자, 핸드 랭크 표시
+- 테이블 형식: | 팟 | 금액 | 승자 | 핸드 |
+
+**AC**:
+- [ ] 메인팟과 사이드팟이 각각 금액과 함께 표시
+- [ ] 각 팟의 승자 닉네임과 핸드 랭크 표시
+- [ ] 데이터가 없으면 기존 "승자 좌석: X" 폴백
+
+**Commit**: `feat(viewer): detailed pot distribution in hand detail view`
+
+---
+
+## V11: 로비 테이블 카드 실시간 갱신
+
+**Goal**: 로비에서 테이블 카드(상태, 착석 수, LIVE 배지)를 주기적으로 새로고침 없이 업데이트한다.
+
+**Deps**: V4
+
+**Scope**:
+- `lobby.html`의 `refreshStats()` 함수를 확장하여 테이블 그리드도 갱신
+- API 응답 데이터로 각 테이블 카드의 badge, 착석 progress bar, 상태 텍스트 업데이트
+- 전체 reload 대신 DOM 부분 업데이트
+
+**AC**:
+- [ ] 테이블 상태(OPEN/PAUSED/CLOSED), LIVE 배지 실시간 반영
+- [ ] 착석 수/progress bar 실시간 업데이트
+- [ ] 새 테이블이 생기면 그리드에 추가 (또는 전체 재렌더)
+- [ ] 기존 15초 주기 유지
+
+**Commit**: `feat(viewer): live-refresh lobby table cards without page reload`
+
+---
+
+## V12: 핸드 리스트 — 타임스탬프 포매팅
+
+**Goal**: hand_list.html에서 시작/종료 시각을 한국어 형식으로 보기 좋게 포매팅한다.
+
+**Deps**: 없음
+
+**Scope**:
+- `viewer/views.py`의 hand_list 엔드포인트에서 datetime을 "MM/DD HH:mm" 형식 문자열로 변환
+- 또는 `hand_list.html`에서 Jinja2 `strftime` 필터 사용
+- 긴 ISO 문자열 대신 간결한 형식
+
+**AC**:
+- [ ] 시작/종료 시각이 "03/21 14:30" 같은 형식으로 표시
+- [ ] null인 경우 "-" 표시 유지
+
+**Commit**: `feat(viewer): format timestamps in hand history list`
+
+---
+
+## V13: 리더보드 탭+정렬 상태 URL 동기화
+
+**Goal**: 리더보드에서 타입 탭(전체/사람/봇)과 정렬 기준이 URL 쿼리에 반영되어 새로고침/공유 시 상태가 유지된다.
+
+**Deps**: V5
+
+**Scope**:
+- `leaderboard.html`의 `switchTab()` 함수에서 `history.replaceState`로 URL 쿼리 업데이트
+- sort 링크의 href에 현재 tab 파라미터 포함: `?sort_by=profit&tab=human`
+- 페이지 로드 시 URL에서 tab 파라미터를 읽어 초기 탭 상태 적용
+- 백엔드 `viewer/views.py` leaderboard 엔드포인트에 `tab` 쿼리 파라미터 추가 (또는 순수 프론트엔드 처리)
+
+**AC**:
+- [ ] 탭 전환 시 URL이 `?sort_by=chips&tab=human` 형태로 업데이트
+- [ ] 정렬 링크 클릭 시 현재 탭 상태가 유지
+- [ ] URL을 직접 입력하거나 공유해도 동일한 뷰 표시
+- [ ] 60초 자동 새로고침 후에도 탭/정렬 상태 유지
+
+**Commit**: `feat(viewer): sync leaderboard tab+sort state with URL params`
+
+---
+
+## V14: 테이블 뷰 — 쇼다운 시 홀카드 공개 연출
+
+**Goal**: 쇼다운 단계에서 참여 플레이어의 홀카드를 좌석 칩 위에 표시한다.
+
+**Deps**: V1, V3
+
+**Scope**:
+- 쇼다운 시 public API 응답에 `hole_cards`가 포함되는지 확인 (이미 포함될 경우 프론트 작업만)
+- `table_live.html`의 `updateSeats()`에서 쇼다운 상태이고 `s.hole_cards`가 있으면 좌석 칩 하단에 미니 카드 2장 표시
+- CSS: 좌석 칩 내부에 `.seat-hole-cards { display: flex; gap: .15rem; justify-content: center; margin-top: .15rem; }`
+- 카드 크기는 `.playing-card.micro { width: 18px; height: 26px; font-size: .5rem; }`
+
+**AC**:
+- [ ] 쇼다운 시 폴드하지 않은 플레이어의 홀카드 2장이 좌석 위에 표시
+- [ ] 카드는 슈트별 색상 코딩 유지
+- [ ] 쇼다운이 아닌 상태에서는 홀카드 미표시
+- [ ] 폴드한 플레이어는 표시하지 않음
+
+**Commit**: `feat(viewer): reveal hole cards on seat chips during showdown`
+
+---
+
+## V15: 전역 다크 스크롤바 + favicon
+
+**Goal**: 전체 뷰어 페이지에 다크 테마 스크롤바를 적용하고 favicon을 추가한다.
+
+**Deps**: 없음
+
+**Scope**:
+- `viewer.css`에 전역 스크롤바 스타일 추가 (`::-webkit-scrollbar` 계열, Firefox는 `scrollbar-color`)
+- `app/static/` 디렉터리에 favicon 추가 (♠ 모양 SVG 또는 심플 PNG)
+- `viewer/base.html` head에 `<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">` 추가
+
+**AC**:
+- [ ] 모든 페이지에서 스크롤바가 다크 테마와 일관됨
+- [ ] 브라우저 탭에 favicon 표시
+- [ ] Firefox, Chrome, Safari에서 정상 동작
+
+**Commit**: `feat(viewer): dark scrollbar + favicon`
+
+---
+
 # 병렬 실행 가능 그룹
 
 의존성 그래프상 다음 티켓들은 병렬 진행 가능:

@@ -13,6 +13,12 @@
 {% endif %}
 {% endmacro %}
 
+{# V9: Build seat_no → nickname mapping for action timeline #}
+{% set nick_map = {} %}
+{% for p in players %}
+  {% if nick_map.update({p.seat_no: p.nickname or ('좌석 ' ~ p.seat_no)}) %}{% endif %}
+{% endfor %}
+
 {% block content %}
 
 <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;">
@@ -74,11 +80,39 @@
   </table>
 </div>
 
-<!-- Pot Distribution -->
+<!-- V10: Pot Distribution (enhanced) -->
 {% if result %}
 <div class="card" style="margin-bottom:1rem;">
   <h2>팟 분배</h2>
-  <p>승자 좌석: <strong>{{ result.winner_seats | join(', ') or '-' }}</strong></p>
+  {% if result.pot_summary %}
+  <table style="margin-bottom:.75rem;">
+    <thead><tr><th>팟</th><th>금액</th></tr></thead>
+    <tbody>
+      {% set ps = result.pot_summary %}
+      <tr>
+        <td>메인 팟</td>
+        <td class="chips"><strong>{{ "{:,}".format(ps.get('main_pot', 0) | int) }}</strong></td>
+      </tr>
+      {% for sp in ps.get('side_pots', []) %}
+      <tr>
+        <td>사이드 팟 {{ loop.index }}</td>
+        <td class="chips"><strong>{{ "{:,}".format(sp.get('amount', 0) | int) }}</strong></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  <div style="display:flex;flex-wrap:wrap;gap:.75rem;">
+    {% for seat_no in result.winner_seats %}
+    <div style="background:rgba(76,175,80,.1);border:1px solid var(--accent);border-radius:8px;padding:.5rem .75rem;display:flex;align-items:center;gap:.5rem;">
+      <span style="font-size:1.1rem;">🏆</span>
+      <div>
+        <div style="font-weight:600;">{{ nick_map.get(seat_no, '좌석 ' ~ seat_no) }}</div>
+        <div style="font-size:.75rem;color:var(--text-muted);">좌석 {{ seat_no }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
 </div>
 {% endif %}
 
@@ -87,9 +121,10 @@
   <h2>액션 타임라인</h2>
   {% set streets = ['preflop', 'flop', 'turn', 'river', 'showdown'] %}
   {% set street_labels = {'preflop':'프리플랍','flop':'플랍','turn':'턴','river':'리버','showdown':'쇼다운'} %}
-  {% set action_cls = {'FOLD':'action-fold','CHECK':'action-check','CALL':'action-call','RAISE':'action-raise','BET':'action-raise','ALL_IN':'action-allin'} %}
-  {% set action_labels = {'FOLD':'폴드','CHECK':'체크','CALL':'콜','RAISE':'레이즈','BET':'베팅','ALL_IN':'올인','POST_SB':'SB 포스트','POST_BB':'BB 포스트','TIMEOUT_FOLD':'⏰ 타임아웃 폴드'} %}
-  {% set system_labels = {'HAND_STARTED':'✦ 핸드 시작','HAND_FINISHED':'✦ 핸드 종료','DEAL_FLOP':'— 플랍 딜','DEAL_TURN':'— 턴 딜','DEAL_RIVER':'— 리버 딜'} %}
+  {% set action_cls = {'FOLD':'action-fold','CHECK':'action-check','CALL':'action-call','RAISE':'action-raise','RAISE_TO':'action-raise','BET':'action-raise','BET_TO':'action-raise','ALL_IN':'action-allin'} %}
+  {% set action_labels = {'FOLD':'폴드','CHECK':'체크','CALL':'콜','RAISE':'레이즈','RAISE_TO':'레이즈','BET':'베팅','BET_TO':'베팅','ALL_IN':'올인','POST_SB':'SB','POST_BB':'BB','TIMEOUT_FOLD':'타임아웃 폴드'} %}
+  {% set system_labels = {'HAND_STARTED':'핸드 시작','HAND_FINISHED':'핸드 종료','DEAL_FLOP':'플랍 오픈','DEAL_TURN':'턴 오픈','DEAL_RIVER':'리버 오픈'} %}
+  {% set rank_kr = {'Royal Flush':'로열 플러시','Straight Flush':'스트레이트 플러시','Four of a Kind':'포카드','Full House':'풀하우스','Flush':'플러시','Straight':'스트레이트','Three of a Kind':'트리플','Two Pair':'투 페어','One Pair':'원 페어','High Card':'하이 카드'} %}
 
   {% for street in streets %}
     {% set street_actions = actions | selectattr('street', 'equalto', street) | list %}
@@ -100,17 +135,55 @@
       </h3>
       <div class="action-feed" style="max-height:none;border:none;background:none;padding:0;">
         {% for a in street_actions %}
-          {% if a.is_system %}
+
+          {# ── SHOWDOWN: 공개 카드 + 족보 ── #}
+          {% if a.action_type == 'SHOWDOWN' and a.payload %}
+            <div class="action-item action-system-event" style="padding:.6rem .75rem;">
+              <div style="font-weight:600;margin-bottom:.5rem;">🃏 쇼다운</div>
+              {% for sp in a.payload.get('players', []) %}
+              <div style="display:flex;align-items:center;gap:.5rem;margin-left:.5rem;margin-bottom:.35rem;flex-wrap:wrap;">
+                <strong style="min-width:6em;">{{ nick_map.get(sp.seat_no, sp.seat_no) }} ({{ sp.seat_no }}번)</strong>
+                <span class="board-cards-inline" style="gap:2px;">
+                  {% for c in sp.get('hole_cards', []) %}{{ render_card(c, 'small') }}{% endfor %}
+                </span>
+                <span style="color:var(--accent);font-weight:600;font-size:.85rem;">{{ rank_kr.get(sp.hand_rank_name, sp.hand_rank_name) }}</span>
+              </div>
+              {% endfor %}
+            </div>
+
+          {# ── POT_AWARDED: 팟 분배 결과 ── #}
+          {% elif a.action_type == 'POT_AWARDED' and a.payload %}
+            {% set p = a.payload %}
+            <div class="action-item action-system-event">
+              💰
+              {% if p.get('type') == 'fold_win' %}폴드 승리
+              {% elif p.get('type') == 'main_pot' %}메인 팟
+              {% else %}사이드 팟
+              {% endif %}
+              <span class="chips" style="font-weight:600;">{{ "{:,}".format(p.get('amount', 0)) }}</span>
+              →
+              {% for w in p.get('winners', []) %}
+                {{ nick_map.get(w, w) }} ({{ w }}번){% if not loop.last %}, {% endif %}
+              {% endfor %}
+            </div>
+
+          {# ── 시스템 액션 ── #}
+          {% elif a.is_system_action %}
             <div class="action-item action-system-event">
               {{ system_labels.get(a.action_type, a.action_type) }}
             </div>
+
+          {# ── 플레이어 액션 ── #}
           {% else %}
+            {% set nick = a.actor_nickname or nick_map.get(a.actor_seat) %}
+            {% set seat_label = nick ~ ' (' ~ a.actor_seat ~ '번)' if nick else a.actor_seat ~ '번 좌석' %}
             <div class="action-item action-player {{ action_cls.get(a.action_type, '') }}">
-              <strong>좌석 {{ a.actor_seat_no }}</strong>
+              <strong>{{ seat_label }}</strong>
               &nbsp;{{ action_labels.get(a.action_type, a.action_type) }}
               {% if a.amount %}<span class="chips"> {{ "{:,}".format(a.amount) }}</span>{% endif %}
             </div>
           {% endif %}
+
         {% endfor %}
       </div>
     </div>

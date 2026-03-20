@@ -15,6 +15,7 @@ from app.services.history_service import (
     get_hand_actions,
     get_hand_detail,
     get_hand_list,
+    get_latest_hand_actions,
     get_my_hands,
     get_table_actions,
 )
@@ -62,6 +63,16 @@ async def get_hand(
     if detail is None:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Hand not found"})
     return detail
+
+
+@router.get("/v1/public/tables/{table_no}/hands/latest/actions")
+async def list_latest_hand_actions(
+    table_no: int,
+    limit: int = Query(default=20, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+) -> Any:
+    table = await _get_table_or_404(session, table_no)
+    return await get_latest_hand_actions(session, table.id, limit=limit)
 
 
 @router.get("/v1/public/tables/{table_no}/hands/{hand_id}/actions")

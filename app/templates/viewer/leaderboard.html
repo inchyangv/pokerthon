@@ -135,9 +135,27 @@
     }
   }
 
+  let currentTab = 'all';
+
   function switchTab(tab) {
+    currentTab = tab;
+
     // Update tab buttons
     document.querySelectorAll('.lb-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+
+    // V13: Sync tab state to URL
+    const url = new URL(window.location);
+    if (tab === 'all') url.searchParams.delete('tab');
+    else url.searchParams.set('tab', tab);
+    history.replaceState(null, '', url);
+
+    // V13: Update sort links to preserve tab param
+    document.querySelectorAll('.lb-sorts a').forEach(a => {
+      const aUrl = new URL(a.href);
+      if (tab === 'all') aUrl.searchParams.delete('tab');
+      else aUrl.searchParams.set('tab', tab);
+      a.href = aUrl.toString();
+    });
 
     // Filter rows and re-rank
     let rank = 1;
@@ -147,7 +165,6 @@
       row.style.display = visible ? '' : 'none';
       if (visible) {
         renderRank(row.querySelector('.rank-cell'), rank++);
-        // Top3 highlight
         const r = rank - 1;
         row.className = row.className.replace(/\s*rank-top3[-\d]*/g, '');
         if (r <= 3) row.classList.add('rank-top3', `rank-top3-${r}`);
@@ -155,7 +172,15 @@
     });
   }
 
-  // Auto-refresh every 60s
-  setInterval(() => location.reload(), 60000);
+  // V13: Restore tab from URL on page load
+  const initialTab = new URLSearchParams(window.location.search).get('tab') || 'all';
+  if (initialTab !== 'all') switchTab(initialTab);
+
+  // Auto-refresh every 60s (preserve tab state)
+  setInterval(() => {
+    const url = new URL(window.location);
+    if (currentTab !== 'all') url.searchParams.set('tab', currentTab);
+    window.location.href = url.toString();
+  }, 60000);
 </script>
 {% endblock %}

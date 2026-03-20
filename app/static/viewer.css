@@ -649,3 +649,37 @@ h2 { font-size: 1.2rem; margin-bottom: .75rem; color: var(--text-muted); }
   .info-pill { min-width: 55px; padding: .25rem .3rem; }
   .info-pill .pill-value { font-size: .78rem; }
 }
+
+/* ── V8: Table idle message ── */
+.table-idle-msg {
+  color: rgba(255,255,255,.45);
+  font-size: .85rem;
+  margin-top: .5rem;
+  letter-spacing: .03em;
+  animation: idle-fade 2.5s ease-in-out infinite;
+}
+
+@keyframes idle-fade { 0%,100%{opacity:.45;} 50%{opacity:.8;} }
+
+/* ── V14: Showdown micro cards on seats ── */
+.playing-card.micro {
+  width: 20px;
+  height: 28px;
+  font-size: .5rem;
+  border-radius: 3px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.3);
+}
+
+.seat-hole-cards {
+  display: flex;
+  gap: .15rem;
+  justify-content: center;
+  margin-top: .15rem;
+}
+
+/* ── V15: Global dark scrollbar ── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+html { scrollbar-color: var(--border) var(--bg); }
