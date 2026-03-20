@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -19,9 +20,14 @@ from app.middleware.admin_auth import AdminAuthMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # startup hooks will be added in later milestones
+    from app.tasks.timeout_checker import timeout_checker_loop
+    task = asyncio.ensure_future(timeout_checker_loop())
     yield
-    # shutdown
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(
