@@ -5,7 +5,7 @@
 <h1>리더보드</h1>
 
 <!-- Summary cards -->
-<div class="stats-grid" id="summaryCards">
+<div class="stats-grid">
   <div class="stat-card">
     <div class="num" id="humanCount">-</div>
     <div class="label">사람 플레이어</div>
@@ -15,21 +15,28 @@
     <div class="label">봇</div>
   </div>
   <div class="stat-card">
-    <div class="num" id="totalHands">-</div>
+    <div class="num" id="totalHandsStat">-</div>
     <div class="label">총 핸드 수</div>
   </div>
 </div>
 
-<!-- Filters -->
-<div style="display:flex;gap:.75rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap;">
-  <span style="color:var(--text-muted);font-size:.85rem;">정렬:</span>
-  <a href="/viewer/leaderboard?sort_by=chips" class="btn btn-secondary" id="sort-chips">총 칩</a>
-  <a href="/viewer/leaderboard?sort_by=profit" class="btn btn-secondary" id="sort-profit">수익</a>
-  <a href="/viewer/leaderboard?sort_by=win_rate" class="btn btn-secondary" id="sort-win_rate">승률</a>
-  <a href="/viewer/leaderboard?sort_by=hands_played" class="btn btn-secondary" id="sort-hands_played">핸드 수</a>
-  <span style="margin-left:auto;">
-    <button id="toggleBots" class="btn btn-secondary" onclick="toggleBots()">봇 숨기기</button>
-  </span>
+<!-- Tabs + Sort -->
+<div class="lb-toolbar">
+  <!-- Type tabs -->
+  <div class="lb-tabs">
+    <button class="lb-tab active" data-tab="all"    onclick="switchTab('all')">전체</button>
+    <button class="lb-tab"        data-tab="human"  onclick="switchTab('human')">🧑 사람</button>
+    <button class="lb-tab"        data-tab="bot"    onclick="switchTab('bot')">🤖 봇</button>
+  </div>
+
+  <!-- Sort -->
+  <div class="lb-sorts">
+    <span style="color:var(--text-muted);font-size:.8rem;">정렬:</span>
+    <a href="/viewer/leaderboard?sort_by=chips"        class="btn btn-secondary btn-sm" id="sort-chips">총 칩</a>
+    <a href="/viewer/leaderboard?sort_by=profit"       class="btn btn-secondary btn-sm" id="sort-profit">수익</a>
+    <a href="/viewer/leaderboard?sort_by=win_rate"     class="btn btn-secondary btn-sm" id="sort-win_rate">승률</a>
+    <a href="/viewer/leaderboard?sort_by=hands_played" class="btn btn-secondary btn-sm" id="sort-hands_played">핸드 수</a>
+  </div>
 </div>
 
 <!-- Leaderboard table -->
@@ -38,7 +45,7 @@
     <tr>
       <th>#</th>
       <th>닉네임</th>
-      <th>타입</th>
+      <th class="hide-mobile">타입</th>
       <th>총 칩</th>
       <th>수익</th>
       <th class="hide-mobile">핸드</th>
@@ -48,11 +55,11 @@
     </tr>
   </thead>
   <tbody id="lbBody">
-    {% set max_chips = items[0].total_chips if items else 1 %}
     {% for item in items %}
-    {% set is_top3 = item.rank <= 3 %}
-    <tr class="{% if item.is_bot %}bot-row{% else %}human-row{% endif %}{% if is_top3 %} rank-top3 rank-top3-{{ item.rank }}{% endif %}">
-      <td>
+    <tr class="lb-row {% if item.is_bot %}bot-row{% else %}human-row{% endif %}"
+        data-is-bot="{{ 'true' if item.is_bot else 'false' }}"
+        data-orig-rank="{{ item.rank }}">
+      <td class="rank-cell">
         {% if item.rank == 1 %}<span class="rank-gold">🥇 1</span>
         {% elif item.rank == 2 %}<span class="rank-silver">🥈 2</span>
         {% elif item.rank == 3 %}<span class="rank-bronze">🥉 3</span>
@@ -65,7 +72,7 @@
         {{ item.nickname }}
         {% if item.is_bot %}🤖{% endif %}
       </td>
-      <td>
+      <td class="hide-mobile">
         {% if item.is_bot %}
           <span class="badge badge-tag">봇</span>
         {% else %}
@@ -105,26 +112,48 @@
 {% block scripts %}
 <script>
   const sortBy = "{{ sort_by }}";
+  const RANK_ICONS = ['', '🥇', '🥈', '🥉'];
 
   // Highlight active sort button
   const sortBtn = document.getElementById('sort-' + sortBy);
   if (sortBtn) { sortBtn.style.background = 'var(--accent)'; sortBtn.style.color = '#000'; }
 
-  let showBots = true;
-  function toggleBots() {
-    showBots = !showBots;
-    document.querySelectorAll('.bot-row').forEach(r => { r.style.display = showBots ? '' : 'none'; });
-    document.getElementById('toggleBots').textContent = showBots ? '봇 숨기기' : '봇 보이기';
+  // Stats
+  const allRows = Array.from(document.querySelectorAll('.lb-row'));
+  const humanRows = allRows.filter(r => r.dataset.isBot === 'false');
+  const botRows   = allRows.filter(r => r.dataset.isBot === 'true');
+  document.getElementById('humanCount').textContent    = humanRows.length;
+  document.getElementById('botCount').textContent      = botRows.length;
+  document.getElementById('totalHandsStat').textContent = '-';
+
+  function renderRank(cell, rank) {
+    if (rank <= 3) {
+      const cls = ['', 'rank-gold', 'rank-silver', 'rank-bronze'][rank];
+      cell.innerHTML = `<span class="${cls}">${RANK_ICONS[rank]} ${rank}</span>`;
+    } else {
+      cell.innerHTML = `<strong>${rank}</strong>`;
+    }
   }
 
-  // Stats
-  let humans = 0, bots = 0, totalHands = 0;
-  document.querySelectorAll('#lbBody tr').forEach(r => {
-    if (r.classList.contains('bot-row')) bots++;
-    else humans++;
-  });
-  document.getElementById('humanCount').textContent = humans;
-  document.getElementById('botCount').textContent   = bots;
+  function switchTab(tab) {
+    // Update tab buttons
+    document.querySelectorAll('.lb-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+
+    // Filter rows and re-rank
+    let rank = 1;
+    allRows.forEach(row => {
+      const isBot = row.dataset.isBot === 'true';
+      const visible = tab === 'all' || (tab === 'human' && !isBot) || (tab === 'bot' && isBot);
+      row.style.display = visible ? '' : 'none';
+      if (visible) {
+        renderRank(row.querySelector('.rank-cell'), rank++);
+        // Top3 highlight
+        const r = rank - 1;
+        row.className = row.className.replace(/\s*rank-top3[-\d]*/g, '');
+        if (r <= 3) row.classList.add('rank-top3', `rank-top3-${r}`);
+      }
+    });
+  }
 
   // Auto-refresh every 60s
   setInterval(() => location.reload(), 60000);

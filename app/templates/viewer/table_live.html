@@ -9,7 +9,7 @@
 
 <!-- Info Bar -->
 <div class="info-bar">
-  <div class="info-pill">
+  <div class="info-pill pill-primary">
     <div class="pill-label">메인 팟</div>
     <div class="pill-value chips" id="mainPot">0</div>
   </div>
@@ -29,11 +29,8 @@
     <div class="pill-label">남은 시간</div>
     <div class="pill-value" id="timer">-</div>
   </div>
-  <div class="info-pill" style="flex:2;text-align:left;">
-    <div class="pill-label">상태</div>
-    <div style="font-size:.8rem;color:var(--text-muted);margin-top:.1rem;" id="statusBar">연결 중...</div>
-  </div>
 </div>
+<div class="status-line" id="statusBar">연결 중...</div>
 
 <!-- Visual Poker Table -->
 <div class="poker-table-wrap" id="tableWrap">
@@ -81,6 +78,8 @@
   let pollInterval = 2000;
   let retryDelay = 1000;
   let seatNickMap = {};
+  let deadlineMs = null;      // action deadline timestamp (ms)
+  let timerTick = null;       // setInterval handle
 
   const SUIT_SYMBOLS = { s: '♠', h: '♥', d: '♦', c: '♣' };
   const SUIT_CLASSES  = { s: 'spades', h: 'hearts', d: 'diamonds', c: 'clubs' };
@@ -228,6 +227,15 @@
     } catch(e) {}
   }
 
+  function tickTimer() {
+    const timerEl = document.getElementById('timer');
+    if (!deadlineMs) { timerEl.textContent = '-'; timerEl.className = 'pill-value'; return; }
+    const secs = Math.max(0, Math.round((deadlineMs - Date.now()) / 1000));
+    timerEl.textContent = secs + 's';
+    timerEl.className = 'pill-value' + (secs <= 5 ? ' danger' : secs <= 10 ? ' warn' : '');
+    if (secs === 0 && timerTick) { clearInterval(timerTick); timerTick = null; }
+  }
+
   async function poll() {
     try {
       const r = await fetch(`/v1/public/tables/${tableNo}/state`);
@@ -252,13 +260,15 @@
         const streetLabel = { preflop:'프리플랍', flop:'플랍', turn:'턴', river:'리버', showdown:'쇼다운' };
         document.getElementById('street').textContent = streetLabel[s.street] || (s.street || '-');
 
-        // Timer
-        const timerEl = document.getElementById('timer');
+        // Timer — store deadline and let tick() handle display
+        if (timerTick) clearInterval(timerTick);
         if (s.action_deadline_at) {
-          const secs = Math.max(0, Math.round((new Date(s.action_deadline_at) - Date.now()) / 1000));
-          timerEl.textContent = secs + 's';
-          timerEl.className = 'pill-value' + (secs <= 5 ? ' danger' : secs <= 10 ? ' warn' : '');
+          deadlineMs = new Date(s.action_deadline_at).getTime();
+          tickTimer();
+          timerTick = setInterval(tickTimer, 1000);
         } else {
+          deadlineMs = null;
+          const timerEl = document.getElementById('timer');
           timerEl.textContent = '-';
           timerEl.className = 'pill-value';
         }

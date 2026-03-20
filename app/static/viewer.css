@@ -569,6 +569,48 @@ h2 { font-size: 1.2rem; margin-bottom: .75rem; color: var(--text-muted); }
 .stat-card .num { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
 .stat-card .label { font-size: .8rem; color: var(--text-muted); margin-top: .2rem; }
 
+/* ── Leaderboard toolbar (tabs + sort) ── */
+.lb-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.lb-tabs {
+  display: flex;
+  gap: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.lb-tab {
+  padding: .4rem .9rem;
+  font-size: .85rem;
+  font-family: inherit;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  border-right: 1px solid var(--border);
+}
+
+.lb-tab:last-child { border-right: none; }
+.lb-tab:hover { background: rgba(255,255,255,.05); color: var(--text); }
+.lb-tab.active { background: var(--accent); color: #000; font-weight: 600; }
+
+.lb-sorts {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
 /* Mobile responsive tables */
 @media (max-width: 640px) {
   .hide-mobile { display: none; }
