@@ -129,6 +129,9 @@ async def seat_bot(
     if existing_result.scalar_one_or_none():
         raise ValueError("CONFLICT: Bot already seated")
 
+    # Remember home table for auto-reseat
+    bot.home_table_no = table_no
+
     return await sit(session, bot.account_id, table_no, seat_no)
 
 

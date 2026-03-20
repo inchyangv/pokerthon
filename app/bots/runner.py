@@ -233,12 +233,6 @@ async def _refill_and_reseat_bots() -> None:
         )
         bots = list(bots_r.scalars().all())
 
-        # Open tables with empty seats
-        tables_r = await session.execute(
-            select(Table).where(Table.status == TableStatus.OPEN).order_by(Table.table_no)
-        )
-        open_tables = list(tables_r.scalars().all())
-
         for bot in bots:
             # Skip if already seated
             seat_r = await session.execute(
@@ -260,17 +254,40 @@ async def _refill_and_reseat_bots() -> None:
                 await chip_grant(session, bot.account_id, settings.BOT_RESEAT_CHIPS, reason_text="bot_reseat")
                 await session.refresh(account)
 
-            # Find a table with an empty seat
-            for table in open_tables:
+            # Reseat at home table if set; fall back to any open table
+            target_table_no = bot.home_table_no
+            if target_table_no:
+                table_r = await session.execute(
+                    select(Table).where(Table.table_no == target_table_no, Table.status == TableStatus.OPEN)
+                )
+                table = table_r.scalar_one_or_none()
+                if table:
+                    seats_r = await session.execute(
+                        select(TableSeat).where(TableSeat.table_id == table.id)
+                    )
+                    has_empty = any(s.seat_status == SeatStatus.EMPTY for s in seats_r.scalars().all())
+                    if has_empty:
+                        try:
+                            async with get_table_lock(table.table_no):
+                                await seat_bot(session, bot.id, table.table_no)
+                            logger.info("Bot %s reseated at home table %d", bot.display_name, table.table_no)
+                            continue
+                        except Exception:
+                            pass  # Fall through to any-table search
+
+            # Fallback: find any open table with an empty seat
+            tables_r = await session.execute(
+                select(Table).where(Table.status == TableStatus.OPEN).order_by(Table.table_no)
+            )
+            for table in tables_r.scalars().all():
                 seats_r = await session.execute(
                     select(TableSeat).where(TableSeat.table_id == table.id)
                 )
-                seats = list(seats_r.scalars().all())
-                if any(s.seat_status == SeatStatus.EMPTY for s in seats):
+                if any(s.seat_status == SeatStatus.EMPTY for s in seats_r.scalars().all()):
                     try:
                         async with get_table_lock(table.table_no):
                             await seat_bot(session, bot.id, table.table_no)
-                        logger.info("Bot %s reseated at table %d", bot.display_name, table.table_no)
+                        logger.info("Bot %s reseated at table %d (fallback)", bot.display_name, table.table_no)
                         break
                     except Exception:
                         continue
