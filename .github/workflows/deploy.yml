@@ -25,8 +25,8 @@ jobs:
       - name: Run tests
         env:
           DATABASE_URL: "sqlite+aiosqlite:///./test.db"
-          ADMIN_PASSWORD: "testpassword"
-          APP_ENCRYPTION_KEY: "testsecret1234567890123456789012"
+          ADMIN_PASSWORD: "changeme"
+          APP_ENCRYPTION_KEY: "changeme_32_char_key_here_______"
           ACTION_TIMEOUT_SECONDS: "600"
           TABLE_BUYIN: "40"
           SMALL_BLIND: "1"
