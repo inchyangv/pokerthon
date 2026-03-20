@@ -4,21 +4,45 @@
 
 <h1>로비</h1>
 
+<!-- Stats Bar -->
+<div class="stats-bar" id="statsBar">
+  <div class="stats-bar-item">
+    <span class="stats-bar-num" id="sbTables">{{ tables | length }}</span>
+    <span class="stats-bar-label">테이블</span>
+  </div>
+  <div class="stats-bar-sep">·</div>
+  <div class="stats-bar-item">
+    <span class="stats-bar-num" id="sbLive">{{ tables | selectattr('has_active_hand') | list | length }}</span>
+    <span class="stats-bar-label">진행 중</span>
+  </div>
+  <div class="stats-bar-sep">·</div>
+  <div class="stats-bar-item">
+    <span class="stats-bar-num" id="sbSeated">{{ tables | sum(attribute='seated_count') }}</span>
+    <span class="stats-bar-label">착석</span>
+  </div>
+</div>
+
 <!-- Table Grid -->
-<h2>테이블</h2>
+<h2 style="margin-top:1.5rem;">테이블</h2>
 <div class="table-grid" id="tableGrid">
 {% if tables %}
   {% for t in tables %}
   <a href="/viewer/tables/{{ t.table_no }}" class="table-card">
-    <div class="table-no">테이블 {{ t.table_no }}</div>
-    <div style="margin:.4rem 0;">
-      {% if t.status == 'OPEN' %}<span class="badge badge-open">OPEN</span>
-      {% elif t.status == 'PAUSED' %}<span class="badge badge-paused">PAUSED</span>
-      {% else %}<span class="badge badge-closed">CLOSED</span>{% endif %}
-      {% if t.has_active_hand %}<span class="badge badge-live">LIVE</span>{% endif %}
+    <div class="table-card-header">
+      <div class="table-no">테이블 {{ t.table_no }}</div>
+      <div class="table-badges">
+        {% if t.status == 'OPEN' %}<span class="badge badge-open">OPEN</span>
+        {% elif t.status == 'PAUSED' %}<span class="badge badge-paused">PAUSED</span>
+        {% else %}<span class="badge badge-closed">CLOSED</span>{% endif %}
+        {% if t.has_active_hand %}<span class="badge badge-live">LIVE</span>{% endif %}
+      </div>
+    </div>
+    <div class="seat-progress-wrap">
+      <div class="seat-progress-bar" style="width:{{ (t.seated_count / t.max_seats * 100) | int }}%"></div>
     </div>
     <div class="table-info">
-      착석 {{ t.seated_count }}/{{ t.max_seats }} &nbsp;|&nbsp; 블라인드 {{ t.small_blind }}/{{ t.big_blind }}
+      <span>🪑 {{ t.seated_count }}/{{ t.max_seats }}</span>
+      <span>🪙 {{ t.small_blind }}/{{ t.big_blind }}</span>
     </div>
   </a>
   {% endfor %}
@@ -29,12 +53,12 @@
 
 <!-- Mini Leaderboard -->
 <div style="margin-top:2rem;">
-  <h2>리더보드 TOP 5 &nbsp;<a href="/viewer/leaderboard" style="font-size:.8rem;color:var(--accent);">전체 보기 →</a></h2>
+  <h2>🏆 리더보드 TOP 5 &nbsp;<a href="/viewer/leaderboard" style="font-size:.8rem;color:var(--accent);">전체 보기 →</a></h2>
   <table class="mini-lb">
     <thead><tr><th>#</th><th>닉네임</th><th>총 칩</th></tr></thead>
-    <tbody id="miniLbBody">
+    <tbody>
     {% for item in leaderboard %}
-    <tr>
+    <tr {% if item.rank == 1 %}class="lb-rank1"{% endif %}>
       <td>
         {% if item.rank == 1 %}<span class="rank-gold">🥇 1</span>
         {% elif item.rank == 2 %}<span class="rank-silver">🥈 2</span>
@@ -42,7 +66,7 @@
         {% else %}{{ item.rank }}{% endif %}
       </td>
       <td>{{ item.nickname }}{% if item.is_bot %} 🤖{% endif %}</td>
-      <td>{{ item.total_chips }}</td>
+      <td class="chips">{{ "{:,}".format(item.total_chips) }}</td>
     </tr>
     {% endfor %}
     </tbody>
@@ -53,16 +77,21 @@
 
 {% block scripts %}
 <script>
-  async function refresh() {
+  // Periodic refresh of stats bar (lightweight)
+  async function refreshStats() {
     try {
-      const [tablesRes, lbRes] = await Promise.all([
-        fetch('/v1/public/tables'),
-        fetch('/v1/public/leaderboard?limit=5'),
-      ]);
-      if (!tablesRes.ok || !lbRes.ok) return;
-      // Simple reload for now — could do DOM update
+      const r = await fetch('/v1/public/tables');
+      if (!r.ok) return;
+      const data = await r.json();
+      const tables = data.tables || data;
+      if (!Array.isArray(tables)) return;
+      const live = tables.filter(t => t.hand_id).length;
+      const seated = tables.reduce((s, t) => s + (t.seated_count || 0), 0);
+      document.getElementById('sbTables').textContent = tables.length;
+      document.getElementById('sbLive').textContent   = live;
+      document.getElementById('sbSeated').textContent = seated;
     } catch(e) {}
   }
-  setInterval(refresh, 30000);
+  setInterval(refreshStats, 15000);
 </script>
 {% endblock %}
