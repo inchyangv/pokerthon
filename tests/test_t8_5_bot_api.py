@@ -116,6 +116,7 @@ async def test_seat_and_unseat_bot(client):
     )
     assert seat_resp.status_code == 200
     assert seat_resp.json()["seat_no"] in range(1, 10)
+    assert seat_resp.json()["stack"] == 40
 
     # Unseat bot
     unseat_resp = await client.post(

@@ -55,17 +55,25 @@ async def sit(session: AsyncSession, account_id: int, table_no: int, seat_no: in
         if not target:
             raise ValueError("TABLE_FULL: No empty seats available")
 
-    # Require minimum wallet balance to deploy a stack (chips are account assets; no deduction)
+    # Determine seating stack (chips are account assets; wallet is not deducted).
+    # - Bot: fixed buy-in stack
+    # - Human: full wallet stack (tournament-style)
     from app.models.account import Account
     acc_result = await session.execute(select(Account).where(Account.id == account_id))
     account = acc_result.scalar_one()
-    if account.wallet_balance < table.buy_in:
-        raise ValueError("INSUFFICIENT_BALANCE: Not enough chips")
+    if account.is_bot:
+        seating_stack = table.buy_in
+        if account.wallet_balance < seating_stack:
+            raise ValueError("INSUFFICIENT_BALANCE: Not enough chips")
+    else:
+        seating_stack = account.wallet_balance
+        if seating_stack <= 0:
+            raise ValueError("INSUFFICIENT_BALANCE: Not enough chips")
 
-    # Update seat (wallet_balance is NOT deducted; wallet always reflects total chip count)
+    # Update seat
     target.account_id = account_id
     target.seat_status = SeatStatus.SEATED
-    target.stack = table.buy_in
+    target.stack = seating_stack
     target.joined_at = datetime.now(timezone.utc)
     await session.commit()
     await session.refresh(target)

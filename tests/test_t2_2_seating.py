@@ -46,7 +46,7 @@ async def test_sit_and_stand(client: AsyncClient):
 
     r = await sit(client, api_key, secret_key, 10)
     assert r.status_code == 200
-    assert r.json()["stack"] == 40
+    assert r.json()["stack"] == 200
 
     # wallet_balance is NOT deducted on sit; chips are account assets
     acc_r = await client.get(f"/admin/accounts/{acc_id}", headers=ADMIN_HEADERS)
@@ -65,7 +65,7 @@ async def test_sit_and_stand(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_sit_insufficient_balance(client: AsyncClient):
-    acc_id, api_key, secret_key = await setup_account_with_chips(client, "bot_sit2", chips=30)
+    acc_id, api_key, secret_key = await setup_account_with_chips(client, "bot_sit2", chips=0)
     await create_table(client, 11)
 
     r = await sit(client, api_key, secret_key, 11)
