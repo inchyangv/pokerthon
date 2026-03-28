@@ -42,36 +42,6 @@ async def list_bots_endpoint(
     return await list_bots(session, is_active=is_active)
 
 
-@router.post("/{bot_id}/seat", status_code=200)
-async def seat_bot_endpoint(
-    bot_id: int,
-    body: BotSeatRequest,
-    session: AsyncSession = Depends(get_session),
-):
-    try:
-        seat = await seat_bot(session, bot_id, body.table_no, body.seat_no)
-        return {"seat_no": seat.seat_no, "stack": seat.stack}
-    except LookupError as e:
-        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": str(e)})
-    except ValueError as e:
-        msg = str(e)
-        if "CONFLICT" in msg:
-            raise HTTPException(status_code=409, detail={"code": "CONFLICT", "message": msg})
-        raise HTTPException(status_code=422, detail={"code": "INVALID", "message": msg})
-
-
-@router.post("/{bot_id}/unseat", status_code=200)
-async def unseat_bot_endpoint(
-    bot_id: int,
-    session: AsyncSession = Depends(get_session),
-):
-    try:
-        result = await unseat_bot(session, bot_id)
-        return result
-    except LookupError as e:
-        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": str(e)})
-
-
 class ResetStacksRequest(BaseModel):
     stack: int = 40
 
@@ -120,6 +90,36 @@ async def reset_bot_stacks_endpoint(
 
     await session.commit()
     return {"updated": updated}
+
+
+@router.post("/{bot_id}/seat", status_code=200)
+async def seat_bot_endpoint(
+    bot_id: int,
+    body: BotSeatRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    try:
+        seat = await seat_bot(session, bot_id, body.table_no, body.seat_no)
+        return {"seat_no": seat.seat_no, "stack": seat.stack}
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": str(e)})
+    except ValueError as e:
+        msg = str(e)
+        if "CONFLICT" in msg:
+            raise HTTPException(status_code=409, detail={"code": "CONFLICT", "message": msg})
+        raise HTTPException(status_code=422, detail={"code": "INVALID", "message": msg})
+
+
+@router.post("/{bot_id}/unseat", status_code=200)
+async def unseat_bot_endpoint(
+    bot_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    try:
+        result = await unseat_bot(session, bot_id)
+        return result
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": str(e)})
 
 
 @router.delete("/{bot_id}", status_code=204)
