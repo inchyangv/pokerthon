@@ -316,13 +316,15 @@ async def bot_runner_loop() -> None:
                 )
                 bots = list(result.scalars().all())
 
-            # Process each bot independently
-            for bot_profile in bots:
+            # Process each bot independently (parallel to avoid serial delay stacking)
+            async def _safe_process(bp: BotProfile) -> None:
                 try:
                     async with async_session_factory() as session:
-                        await _process_bot_turn(session, bot_profile)
+                        await _process_bot_turn(session, bp)
                 except Exception:
-                    logger.exception("Error processing bot %s", bot_profile.display_name)
+                    logger.exception("Error processing bot %s", bp.display_name)
+
+            await asyncio.gather(*[_safe_process(bp) for bp in bots])
 
         except Exception:
             logger.exception("Error in bot runner loop")
