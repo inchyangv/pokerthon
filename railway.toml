@@ -6,7 +6,7 @@ dockerfilePath = "Dockerfile"
 # releaseCommand runs once per deploy (not on cold-start wakeups) — ideal for migrations
 releaseCommand = "alembic upgrade head"
 # startCommand is pure uvicorn so cold-start latency is minimal
-startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 75 --backlog 2048"
+startCommand = "sh -c 'uvicorn app.main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 75 --backlog 2048'"
 healthcheckPath = "/health"
 healthcheckTimeout = 120
 restartPolicyType = "on_failure"
