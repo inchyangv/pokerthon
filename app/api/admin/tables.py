@@ -174,6 +174,32 @@ async def merge_tables_endpoint(
     return result
 
 
+@router.post("/{table_no}/stand-player")
+async def admin_stand_player(
+    table_no: int,
+    body: AdminSeatBody,
+    session: AsyncSession = Depends(get_session),
+):
+    """Admin: force a player to stand immediately (even if a hand is in progress)."""
+    from sqlalchemy import select
+    from app.models.table import Table, TableSeat, SeatStatus
+    table_r = await session.execute(select(Table).where(Table.table_no == table_no))
+    table = table_r.scalar_one_or_none()
+    if not table:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Table not found"})
+    seat_r = await session.execute(
+        select(TableSeat).where(TableSeat.table_id == table.id, TableSeat.account_id == body.account_id)
+    )
+    seat = seat_r.scalar_one_or_none()
+    if not seat or seat.seat_status == SeatStatus.EMPTY:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Player not seated at this table"})
+    seat.seat_status = SeatStatus.EMPTY
+    seat.account_id = None
+    seat.stack = 0
+    await session.commit()
+    return {"table_no": table_no, "account_id": body.account_id, "stood_up": True}
+
+
 @router.post("/{table_no}/seat-player")
 async def admin_seat_player(
     table_no: int,
