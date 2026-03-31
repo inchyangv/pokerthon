@@ -264,8 +264,13 @@ async def get_latest_hand_actions(
     session: AsyncSession,
     table_id: int,
     limit: int = 20,
+    after_seq: int | None = None,
 ) -> dict[str, Any]:
-    """Return actions from the latest hand (in-progress or most recently finished)."""
+    """Return actions from the latest hand (in-progress or most recently finished).
+
+    If after_seq is provided, only actions with seq > after_seq are returned,
+    enabling incremental updates on the client side.
+    """
     hand_result = await session.execute(
         select(Hand)
         .where(Hand.table_id == table_id)
@@ -274,8 +279,10 @@ async def get_latest_hand_actions(
     )
     hand = hand_result.scalar_one_or_none()
     if not hand:
-        return {"actions": []}
+        return {"actions": [], "hand_id": None}
     actions = await get_hand_actions(session, hand.id)
-    if limit and len(actions) > limit:
+    if after_seq is not None:
+        actions = [a for a in actions if a["seq"] > after_seq]
+    elif limit and len(actions) > limit:
         actions = actions[-limit:]
-    return {"actions": actions}
+    return {"actions": actions, "hand_id": hand.id}

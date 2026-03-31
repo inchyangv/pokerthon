@@ -83,6 +83,8 @@
   let timerTick = null;
   let lastHandId = null;
   let showdownCards = {};   // seat_no -> [card1, card2]
+  let lastActionSeq = -1;   // for incremental action feed updates
+  let actionFeedHandId = null; // hand_id the feed currently shows
 
   const SUIT_SYMBOLS = { s: '♠', h: '♥', d: '♦', c: '♣' };
   const SUIT_CLASSES  = { s: 'spades', h: 'hearts', d: 'diamonds', c: 'clubs' };
@@ -272,30 +274,57 @@
     return { text: `${label}  ${info.label}${amount}`, cls: `action-player ${info.cls}` };
   }
 
-  async function fetchActions() {
+  async function fetchActions(resetFeed) {
     try {
-      const r = await fetch(`/v1/public/tables/${tableNo}/hands/latest/actions?limit=20`);
+      // If hand changed or first load, reset the feed
+      const params = resetFeed || lastActionSeq < 0
+        ? `limit=20`
+        : `after_seq=${lastActionSeq}`;
+      const r = await fetch(`/v1/public/tables/${tableNo}/hands/latest/actions?${params}`);
       if (!r.ok) return;
       const data = await r.json();
-      if (!data.actions?.length) return;
+
       const feed = document.getElementById('actionFeed');
 
-      // V7: Check if user is near bottom before update
+      // If hand_id changed, clear and rebuild from scratch
+      if (data.hand_id !== actionFeedHandId) {
+        feed.innerHTML = '';
+        lastActionSeq = -1;
+        actionFeedHandId = data.hand_id;
+        // Fetch full history for new hand
+        if (!resetFeed) { await fetchActions(true); return; }
+      }
+
+      if (!data.actions?.length) return;
+
       const wasAtBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40;
 
-      feed.innerHTML = '';
-      for (const a of [...data.actions].reverse()) {
-        const { text, cls } = formatAction(a);
-        const div = document.createElement('div');
-        div.className = `action-item ${cls}`;
-        div.textContent = text;
-        feed.appendChild(div);
+      if (resetFeed || lastActionSeq < 0) {
+        // Full rebuild
+        feed.innerHTML = '';
+        for (const a of [...data.actions].reverse()) {
+          const { text, cls } = formatAction(a);
+          const div = document.createElement('div');
+          div.className = `action-item ${cls}`;
+          div.textContent = text;
+          feed.appendChild(div);
+        }
+      } else {
+        // Incremental: append only new actions (already in ascending order)
+        for (const a of data.actions) {
+          const { text, cls } = formatAction(a);
+          const div = document.createElement('div');
+          div.className = `action-item ${cls}`;
+          div.textContent = text;
+          feed.appendChild(div);
+        }
       }
 
-      // V7: Auto-scroll if user was at bottom
-      if (wasAtBottom) {
-        feed.scrollTop = feed.scrollHeight;
-      }
+      // Track highest seq seen
+      const seqs = data.actions.map(a => a.seq).filter(s => s != null);
+      if (seqs.length) lastActionSeq = Math.max(...seqs);
+
+      if (wasAtBottom) feed.scrollTop = feed.scrollHeight;
     } catch(e) {}
   }
 
@@ -382,7 +411,7 @@
           s.big_blind_seat_no,
           s.current_bet ?? 0,
         );
-        await fetchActions();
+        await fetchActions(false);
       }
 
       document.getElementById('statusBar').textContent =

@@ -69,10 +69,11 @@ async def get_hand(
 async def list_latest_hand_actions(
     table_no: int,
     limit: int = Query(default=20, ge=1, le=100),
+    after_seq: int | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
 ) -> Any:
     table = await _get_table_or_404(session, table_no)
-    return await get_latest_hand_actions(session, table.id, limit=limit)
+    return await get_latest_hand_actions(session, table.id, limit=limit, after_seq=after_seq)
 
 
 @router.get("/v1/public/tables/{table_no}/hands/{hand_id}/actions")
