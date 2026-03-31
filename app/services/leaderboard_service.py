@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import time
 from collections import defaultdict
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +14,15 @@ from app.models.chip import ChipLedger, LedgerReasonType
 from app.models.hand import Hand, HandPlayer, HandResult, HandStatus
 from app.models.table import SeatStatus, Table, TableSeat
 
+# In-memory cache: key → (timestamp, data)
+_cache: dict[tuple, tuple[float, list[dict]]] = {}
+_CACHE_TTL = 20.0  # seconds
+
+
+def invalidate_leaderboard_cache() -> None:
+    """Call this after a hand completes to clear stale data."""
+    _cache.clear()
+
 
 async def get_leaderboard(
     session: AsyncSession,
@@ -19,6 +30,14 @@ async def get_leaderboard(
     limit: int = 50,
     include_bots: bool = True,
 ) -> list[dict]:
+    # ── 0. Cache check ───────────────────────────────────────────────────────
+    cache_key = (sort_by, include_bots, limit)
+    entry = _cache.get(cache_key)
+    if entry is not None:
+        ts, data = entry
+        if time.monotonic() - ts < _CACHE_TTL:
+            return data
+
     # ── 1. Load all accounts (1 query) ───────────────────────────────────────
     query = select(Account)
     if not include_bots:
@@ -143,4 +162,5 @@ async def get_leaderboard(
     for i, item in enumerate(items, 1):
         item["rank"] = i
 
+    _cache[cache_key] = (time.monotonic(), items)
     return items

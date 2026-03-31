@@ -13,6 +13,7 @@ from app.models.hand import Hand, HandPlayer, HandResult, HandStatus
 from app.models.table import SeatStatus, Table, TableSeat, TableStatus
 from app.services.chip_service import apply_game_delta
 from app.services.hand_service import _log_action
+from app.services.leaderboard_service import invalidate_leaderboard_cache
 from app.services.snapshot_service import bump_snapshot
 
 
@@ -33,6 +34,7 @@ async def complete_hand(
     # --- 1. Finish the hand ---
     hand.status = HandStatus.FINISHED
     hand.finished_at = datetime.now(timezone.utc)
+    invalidate_leaderboard_cache()
 
     await _log_action(session, hand.id, "HAND_FINISHED", hand.street)
 
