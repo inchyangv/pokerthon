@@ -8,14 +8,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency files
+# --- Dependency caching layer ---
+# Copy only pyproject.toml first; stub app/__init__.py so hatchling can build
+# the wheel and install all deps without the full source (better layer cache).
 COPY pyproject.toml ./
-
-# Install dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
+RUN mkdir -p app && touch app/__init__.py && \
+    pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir .
 
-# Copy application source
+# --- Application source (separate layer — doesn't bust dep cache) ---
 COPY alembic.ini ./
 COPY alembic/ ./alembic/
 COPY app/ ./app/
