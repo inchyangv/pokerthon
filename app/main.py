@@ -1,7 +1,8 @@
 import asyncio
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 from app.api.admin.accounts import router as admin_accounts_router
@@ -71,6 +72,15 @@ app = FastAPI(
 app.add_middleware(AdminAuthMiddleware)
 app.add_middleware(RateLimitMiddleware)  # outermost: runs before AdminAuth
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+
+@app.middleware("http")
+async def static_cache_headers(request: Request, call_next) -> Response:
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        # 1 hour public cache; browsers will still revalidate with If-None-Match (ETag)
+        response.headers["Cache-Control"] = "public, max-age=3600"
+    return response
 
 app.include_router(admin_views_router)
 app.include_router(health_router)
