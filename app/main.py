@@ -1,9 +1,12 @@
 import asyncio
+import hashlib
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from app.api.admin.accounts import router as admin_accounts_router
 from app.api.viewer.views import router as viewer_router
@@ -76,12 +79,44 @@ app.add_middleware(RateLimitMiddleware)  # outermost: runs before AdminAuth
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 
+def _file_hash(path: str) -> str:
+    """Return first 8 chars of MD5 hash for a static file."""
+    try:
+        return hashlib.md5(Path(path).read_bytes()).hexdigest()[:8]
+    except OSError:
+        return "00000000"
+
+
+# Pre-compute content hashes at startup for fingerprinting
+_ASSET_HASHES: dict[str, str] = {
+    "/static/viewer.css": _file_hash("app/static/viewer.css"),
+    "/static/admin.css":  _file_hash("app/static/admin.css"),
+    "/static/playground.css": _file_hash("app/static/playground.css"),
+    "/static/playground.js":  _file_hash("app/static/playground.js"),
+}
+
+
+def asset_url(path: str) -> str:
+    """Return asset URL with content-hash query param for immutable caching."""
+    h = _ASSET_HASHES.get(path)
+    return f"{path}?v={h}" if h else path
+
+
+# Register asset_url as a Jinja2 global so all templates can call it
+_jinja = Jinja2Templates(directory="app/templates")
+_jinja.env.globals["asset_url"] = asset_url
+
+
 @app.middleware("http")
 async def static_cache_headers(request: Request, call_next) -> Response:
     response = await call_next(request)
     if request.url.path.startswith("/static/"):
-        # 1 hour public cache; browsers will still revalidate with If-None-Match (ETag)
-        response.headers["Cache-Control"] = "public, max-age=3600"
+        if request.url.query:
+            # Versioned request (e.g. ?v=abc123) → immutable 1-year cache
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            # Unversioned → short cache with revalidation
+            response.headers["Cache-Control"] = "public, max-age=3600"
     return response
 
 app.include_router(admin_views_router)

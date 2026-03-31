@@ -19,8 +19,8 @@
     h2{font-size:1.2rem;margin-bottom:.75rem;color:var(--text-muted)}
   </style>
   <!-- Full stylesheet loaded non-blocking after critical CSS above -->
-  <link rel="stylesheet" href="/static/viewer.css" media="print" onload="this.media='all'">
-  <noscript><link rel="stylesheet" href="/static/viewer.css"></noscript>
+  <link rel="stylesheet" href="{{ asset_url('/static/viewer.css') }}" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="{{ asset_url('/static/viewer.css') }}"></noscript>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 </head>
 <body>
