@@ -76,6 +76,53 @@ async def list_latest_hand_actions(
     return await get_latest_hand_actions(session, table.id, limit=limit, after_seq=after_seq)
 
 
+@router.get("/v1/public/tables/{table_no}/hands/{hand_id}/hole_cards")
+async def get_hand_hole_cards(
+    table_no: int,
+    hand_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> Any:
+    """Lightweight endpoint: returns only hole_cards per seat for showdown display."""
+    import json as _json
+    from app.models.hand import HandPlayer, HandResult
+    from app.models.table import Table as _Table
+
+    table = await _get_table_or_404(session, table_no)
+    hand = await _get_hand_or_404(session, table.id, hand_id)
+
+    players_result = await session.execute(
+        select(HandPlayer).where(HandPlayer.hand_id == hand_id)
+    )
+    players = list(players_result.scalars().all())
+
+    hr_result = await session.execute(
+        select(HandResult).where(HandResult.hand_id == hand_id)
+    )
+    hr = hr_result.scalar_one_or_none()
+    result_data = {}
+    if hr:
+        try:
+            result_data = _json.loads(hr.result_json)
+        except Exception:
+            pass
+
+    summaries = result_data.get("summaries", [])
+    is_showdown = any(s.get("type") not in ("fold_win", "uncalled_return") for s in summaries)
+
+    out = []
+    for p in players:
+        reveal = (not p.folded) and is_showdown
+        if reveal and p.hole_cards_json:
+            try:
+                cards = _json.loads(p.hole_cards_json)
+            except Exception:
+                cards = []
+            if cards:
+                out.append({"seat_no": p.seat_no, "hole_cards": cards})
+
+    return {"players": out}
+
+
 @router.get("/v1/public/tables/{table_no}/hands/{hand_id}/actions")
 async def list_hand_actions(
     table_no: int,

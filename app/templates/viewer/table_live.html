@@ -192,10 +192,10 @@
     });
   }
 
-  // V14: Fetch hole cards from last finished hand
+  // V14: Fetch hole cards from last finished hand (lightweight endpoint)
   async function fetchShowdownCards(handId) {
     try {
-      const r = await fetch(`/v1/public/tables/${tableNo}/hands/${handId}`);
+      const r = await fetch(`/v1/public/tables/${tableNo}/hands/${handId}/hole_cards`);
       if (!r.ok) return;
       const data = await r.json();
       showdownCards = {};
