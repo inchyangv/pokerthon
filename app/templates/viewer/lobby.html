@@ -161,6 +161,25 @@
     } catch(e) {}
   }
 
-  setInterval(refreshLobby, 15000);
+  let lobbyTimer = null;
+
+  function scheduleLobby(interval) {
+    if (lobbyTimer) clearTimeout(lobbyTimer);
+    lobbyTimer = setTimeout(async () => {
+      await refreshLobby();
+      // Determine next interval from current DOM state
+      const hasLive = document.querySelectorAll('.badge-live').length > 0;
+      scheduleLobby(document.hidden ? 60000 : (hasLive ? 5000 : 30000));
+    }, interval);
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      // Resume immediately on tab focus
+      scheduleLobby(0);
+    }
+  });
+
+  scheduleLobby(5000);
 </script>
 {% endblock %}
