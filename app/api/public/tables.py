@@ -38,17 +38,18 @@ async def get_public_table(table_no: int, session: AsyncSession = Depends(get_se
     if not table:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Table not found"})
 
-    # Load nicknames for each seated player
+    # Batch-load nicknames for all seated players (1 query)
+    acc_ids = [s.account_id for s in table.seats if s.account_id]
+    nickname_map: dict[int, str] = {}
+    if acc_ids:
+        acc_result = await session.execute(select(Account).where(Account.id.in_(acc_ids)))
+        nickname_map = {a.id: a.nickname for a in acc_result.scalars().all()}
+
     seats_out = []
     for seat in table.seats:
-        nickname = None
-        if seat.account_id:
-            acc_r = await session.execute(select(Account).where(Account.id == seat.account_id))
-            acc = acc_r.scalar_one_or_none()
-            nickname = acc.nickname if acc else None
         seats_out.append(PublicSeatView(
             seat_no=seat.seat_no,
-            nickname=nickname,
+            nickname=nickname_map.get(seat.account_id) if seat.account_id else None,
             stack=seat.stack,
             seat_status=seat.seat_status,
         ))
