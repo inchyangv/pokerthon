@@ -27,6 +27,9 @@ class PublicTableList(BaseModel):
     status: TableStatus
     seated_count: int
     max_seats: int
+    small_blind: int
+    big_blind: int
+    hand_id: int | None
 
     model_config = {"from_attributes": True}
 

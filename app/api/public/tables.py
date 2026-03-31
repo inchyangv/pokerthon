@@ -5,6 +5,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_session
 from app.models.account import Account
+from app.models.hand import Hand, HandStatus
 from app.models.table import SeatStatus, Table, TableSeat
 from app.schemas.table_public import PublicSeatView, PublicTableDetail, PublicTableList
 
@@ -16,7 +17,20 @@ async def list_public_tables(session: AsyncSession = Depends(get_session)):
     result = await session.execute(
         select(Table).options(selectinload(Table.seats)).order_by(Table.table_no)
     )
-    tables = result.scalars().all()
+    tables = list(result.scalars().all())
+
+    # Batch-load active hands for all tables in 1 query
+    table_ids = [t.id for t in tables]
+    active_hand_map: dict[int, int] = {}  # table_id -> hand_id
+    if table_ids:
+        hands_result = await session.execute(
+            select(Hand.table_id, Hand.id).where(
+                Hand.table_id.in_(table_ids),
+                Hand.status == HandStatus.IN_PROGRESS,
+            )
+        )
+        active_hand_map = {row[0]: row[1] for row in hands_result.all()}
+
     out = []
     for t in tables:
         seated = sum(1 for s in t.seats if s.seat_status != SeatStatus.EMPTY)
@@ -25,6 +39,9 @@ async def list_public_tables(session: AsyncSession = Depends(get_session)):
             status=t.status,
             seated_count=seated,
             max_seats=t.max_seats,
+            small_blind=t.small_blind,
+            big_blind=t.big_blind,
+            hand_id=active_hand_map.get(t.id),
         ))
     return out
 
