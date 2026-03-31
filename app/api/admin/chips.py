@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_session
 from app.schemas.account import AccountResponse
 from app.schemas.chip import ChipDeductRequest, ChipGrantRequest, LedgerEntry
@@ -12,6 +13,11 @@ router = APIRouter(prefix="/admin/accounts", tags=["admin-chips"])
 
 @router.post("/{account_id}/grant", response_model=AccountResponse)
 async def grant_chips(account_id: int, body: ChipGrantRequest, session: AsyncSession = Depends(get_session)):
+    if settings.TOURNAMENT_MODE:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "TOURNAMENT_MODE", "message": "Chip grants are disabled during tournament mode"},
+        )
     account = await get_account(session, account_id)
     if not account:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Account not found"})

@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     TOURNAMENT_START_AT: datetime | None = None
     BLIND_LEVEL_HOURS: int = 48
 
+    # Tournament mode: blocks chip grant endpoint to prevent mid-tournament top-ups
+    TOURNAMENT_MODE: bool = False
+
     # Bot settings
     BOT_ENABLED: bool = True
     BOT_POLL_INTERVAL: float = 2.0
