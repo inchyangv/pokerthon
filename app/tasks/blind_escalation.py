@@ -128,13 +128,25 @@ async def _apply_blinds_if_needed() -> None:
 
 
 async def _start_all_eligible_tables() -> None:
-    """Start hands on every OPEN table that has >= 2 seated players."""
+    """Resume PAUSED tables then start hands on every OPEN table with >= 2 seated players."""
     from sqlalchemy import select
 
     from app.core.table_lock import get_table_lock
     from app.database import async_session_factory
     from app.models.table import SeatStatus, Table, TableSeat, TableStatus
     from app.services.hand_service import get_active_hand, start_hand
+
+    # First, resume any PAUSED tables so they're eligible for hand start
+    async with async_session_factory() as session:
+        paused_result = await session.execute(
+            select(Table).where(Table.status == TableStatus.PAUSED)
+        )
+        paused_tables = list(paused_result.scalars().all())
+        for t in paused_tables:
+            t.status = TableStatus.OPEN
+            logger.info("Tournament start: resumed PAUSED table %d", t.table_no)
+        if paused_tables:
+            await session.commit()
 
     async with async_session_factory() as session:
         result = await session.execute(
