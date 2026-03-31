@@ -4,9 +4,24 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Pokerthon{% endblock %}</title>
-  <!-- Fonts are self-hosted via @font-face in viewer.css — no external DNS needed -->
+  <!-- Critical CSS inlined for instant first paint -->
+  <style>
+    :root{--bg:#0f1a0f;--surface:#1a2e1a;--card-bg:#1e3a1e;--border:#2d4a2d;--text:#e8f5e8;--text-muted:#8aab8a;--accent:#4caf50;--danger:#e53935;--warn:#fb8c00}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column}
+    .container{flex:1;max-width:1200px;margin:0 auto;padding:1.5rem}
+    nav{background:var(--surface);border-bottom:1px solid var(--border);padding:.75rem 1.5rem;display:flex;align-items:center;gap:1.5rem}
+    nav .brand{font-size:1.25rem;font-weight:700;color:var(--accent);text-decoration:none}
+    nav a{color:var(--text-muted);text-decoration:none;font-size:.9rem}
+    nav a.active{color:var(--accent);border-bottom:2px solid var(--accent);padding-bottom:2px}
+    footer{text-align:center;padding:1.25rem;font-size:.78rem;color:var(--text-muted);border-top:1px solid var(--border);margin-top:2rem}
+    h1{font-size:1.6rem;margin-bottom:1rem}
+    h2{font-size:1.2rem;margin-bottom:.75rem;color:var(--text-muted)}
+  </style>
+  <!-- Full stylesheet loaded non-blocking after critical CSS above -->
+  <link rel="stylesheet" href="/static/viewer.css" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="/static/viewer.css"></noscript>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/static/viewer.css">
 </head>
 <body>
 <nav>
