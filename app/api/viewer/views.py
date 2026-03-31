@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from starlette.requests import Request
 
 from app.database import get_session
@@ -51,20 +52,27 @@ async def table_live(
 
 @router.get("/", response_class=HTMLResponse)
 async def lobby(request: Request, session: AsyncSession = Depends(get_session)):
-    tables_result = await session.execute(select(Table).order_by(Table.table_no))
+    # Batch load tables + seats in 2 queries instead of 2N+1
+    tables_result = await session.execute(
+        select(Table).options(selectinload(Table.seats)).order_by(Table.table_no)
+    )
     all_tables = list(tables_result.scalars().all())
+
+    # One query for all in-progress hands across all tables
+    table_ids = [t.id for t in all_tables]
+    active_hands: dict[int, bool] = {}
+    if table_ids:
+        hands_result = await session.execute(
+            select(Hand.table_id).where(
+                Hand.table_id.in_(table_ids),
+                Hand.status == HandStatus.IN_PROGRESS,
+            )
+        )
+        active_hands = {row[0]: True for row in hands_result.all()}
 
     tables_out = []
     for t in all_tables:
-        seats_r = await session.execute(select(TableSeat).where(TableSeat.table_id == t.id))
-        seats = list(seats_r.scalars().all())
-        seated = sum(1 for s in seats if s.seat_status != SeatStatus.EMPTY)
-
-        hand_r = await session.execute(
-            select(Hand).where(Hand.table_id == t.id, Hand.status == HandStatus.IN_PROGRESS)
-        )
-        hand = hand_r.scalar_one_or_none()
-
+        seated = sum(1 for s in t.seats if s.seat_status != SeatStatus.EMPTY)
         tables_out.append({
             "table_no": t.table_no,
             "status": t.status.value,
@@ -72,7 +80,7 @@ async def lobby(request: Request, session: AsyncSession = Depends(get_session)):
             "max_seats": t.max_seats,
             "small_blind": t.small_blind,
             "big_blind": t.big_blind,
-            "has_active_hand": hand is not None,
+            "has_active_hand": active_hands.get(t.id, False),
         })
 
     leaderboard = await get_leaderboard(session, sort_by="chips", limit=5)
