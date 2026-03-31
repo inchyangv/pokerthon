@@ -176,11 +176,65 @@
   const initialTab = new URLSearchParams(window.location.search).get('tab') || 'all';
   if (initialTab !== 'all') switchTab(initialTab);
 
-  // Auto-refresh every 60s (preserve tab state)
-  setInterval(() => {
-    const url = new URL(window.location);
-    if (currentTab !== 'all') url.searchParams.set('tab', currentTab);
-    window.location.href = url.toString();
-  }, 60000);
+  // Build a row HTML string from an item object
+  function buildRowHtml(item) {
+    const isBot = item.is_bot;
+    const rowClass = `lb-row ${isBot ? 'bot-row' : 'human-row'}`;
+    const rankIcons = ['', '🥇', '🥈', '🥉'];
+    const rankHtml = item.rank <= 3
+      ? `<span class="${['','rank-gold','rank-silver','rank-bronze'][item.rank]}">${rankIcons[item.rank]} ${item.rank}</span>`
+      : `<strong>${item.rank}</strong>`;
+    const onlineDot = item.current_table
+      ? `<span class="online-dot" title="현재 플레이 중"></span>` : '';
+    const profitHtml = item.total_profit >= 0
+      ? `<span style="color:#4caf50;">▲ +${item.total_profit.toLocaleString('ko-KR')}</span>`
+      : `<span style="color:#e53935;">▼ ${item.total_profit.toLocaleString('ko-KR')}</span>`;
+    const winPct = (item.win_rate * 100).toFixed(1);
+    const winBarW = Math.round(item.win_rate * 100);
+    const tableCell = item.current_table
+      ? `<a href="/viewer/tables/${item.current_table}"><span class="badge badge-live" style="font-size:.7rem;">LIVE</span> ${item.current_table}</a>`
+      : `<span style="color:var(--text-muted);">-</span>`;
+    return `<tr class="${rowClass}" data-is-bot="${isBot}" data-orig-rank="${item.rank}">
+      <td class="rank-cell">${rankHtml}</td>
+      <td>${onlineDot}${item.nickname}${isBot ? ' 🤖' : ''}</td>
+      <td class="hide-mobile"><span class="badge ${isBot ? 'badge-tag' : ''}" style="${isBot ? '' : 'background:#546e7a;'}">${isBot ? '봇' : '사람'}</span></td>
+      <td><strong class="chips">${item.total_chips.toLocaleString('ko-KR')}</strong></td>
+      <td style="font-family:'JetBrains Mono',monospace;">${profitHtml}</td>
+      <td class="hide-mobile">${item.hands_played}</td>
+      <td><div style="display:flex;align-items:center;gap:.4rem;"><div class="wr-bar-wrap"><div class="wr-bar" style="width:${winBarW}%"></div></div><span style="font-size:.78rem;font-family:'JetBrains Mono',monospace;">${winPct}%</span></div></td>
+      <td class="hide-mobile chips">${item.biggest_pot_won.toLocaleString('ko-KR')}</td>
+      <td class="hide-mobile">${tableCell}</td>
+    </tr>`;
+  }
+
+  // AJAX refresh — updates tbody only, preserves tab/scroll
+  async function refreshLeaderboard() {
+    try {
+      const r = await fetch(`/v1/public/leaderboard?sort_by=${sortBy}&limit=200&include_bots=true`);
+      if (!r.ok) return;
+      const data = await r.json();
+      const items = data.items || [];
+
+      const tbody = document.getElementById('lbBody');
+      tbody.innerHTML = items.map(buildRowHtml).join('');
+
+      // Re-collect rows and update stats
+      const newRows = Array.from(tbody.querySelectorAll('.lb-row'));
+      newRows.forEach(r => {
+        const isBot = r.dataset.isBot === 'true';
+        if (!isBot) document.getElementById('humanCount').textContent =
+          (parseInt(document.getElementById('humanCount').textContent) || 0).toString();
+      });
+      const humans = newRows.filter(r => r.dataset.isBot === 'false').length;
+      const bots = newRows.filter(r => r.dataset.isBot === 'true').length;
+      document.getElementById('humanCount').textContent = humans;
+      document.getElementById('botCount').textContent = bots;
+
+      // Re-apply current tab filter
+      switchTab(currentTab);
+    } catch(e) {}
+  }
+
+  setInterval(refreshLeaderboard, 30000);
 </script>
 {% endblock %}
