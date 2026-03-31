@@ -53,26 +53,47 @@ class PublicGameState(BaseModel):
     state_version: int
 
 
+async def _fetch_seats_and_nicknames(table_id: int) -> tuple[list, dict[int, str]]:
+    """Fetch seats + account nicknames in 2 queries (own session)."""
+    async with async_session_factory() as s:
+        seats_result = await s.execute(select(TableSeat).where(TableSeat.table_id == table_id))
+        seats = list(seats_result.scalars().all())
+        acc_ids = [seat.account_id for seat in seats if seat.account_id]
+        nickname_map: dict[int, str] = {}
+        if acc_ids:
+            acc_result = await s.execute(select(Account).where(Account.id.in_(acc_ids)))
+            for acc in acc_result.scalars().all():
+                nickname_map[acc.id] = acc.nickname
+        return seats, nickname_map
+
+
+async def _fetch_hand_and_players(table_id: int) -> tuple:
+    """Fetch active hand + hand players in 2 queries (own session)."""
+    async with async_session_factory() as s:
+        hand_result = await s.execute(
+            select(Hand).where(Hand.table_id == table_id, Hand.status == HandStatus.IN_PROGRESS)
+        )
+        hand: Hand | None = hand_result.scalar_one_or_none()
+        players: dict[int, HandPlayer] = {}
+        if hand is not None:
+            players_result = await s.execute(
+                select(HandPlayer).where(HandPlayer.hand_id == hand.id)
+            )
+            players = {p.seat_no: p for p in players_result.scalars().all()}
+        return hand, players
+
+
 async def _compute_state(
     session: AsyncSession,
     table: Table,
     state_version: int,
 ) -> PublicGameState:
-    """Build PublicGameState by running up to 4 DB queries."""
-    seats_result = await session.execute(select(TableSeat).where(TableSeat.table_id == table.id))
-    seats = list(seats_result.scalars().all())
-
-    acc_ids = [s.account_id for s in seats if s.account_id]
-    nickname_map: dict[int, str] = {}
-    if acc_ids:
-        acc_result = await session.execute(select(Account).where(Account.id.in_(acc_ids)))
-        for acc in acc_result.scalars().all():
-            nickname_map[acc.id] = acc.nickname
-
-    hand_result = await session.execute(
-        select(Hand).where(Hand.table_id == table.id, Hand.status == HandStatus.IN_PROGRESS)
+    """Build PublicGameState — runs seats and hand chains in parallel."""
+    # Two independent query chains run concurrently on separate sessions
+    (seats, nickname_map), (hand, players) = await asyncio.gather(
+        _fetch_seats_and_nicknames(table.id),
+        _fetch_hand_and_players(table.id),
     )
-    hand: Hand | None = hand_result.scalar_one_or_none()
 
     if hand is None:
         seat_states = [
@@ -103,11 +124,6 @@ async def _compute_state(
             action_deadline_at=None,
             state_version=state_version,
         )
-
-    players_result = await session.execute(
-        select(HandPlayer).where(HandPlayer.hand_id == hand.id)
-    )
-    players = {p.seat_no: p for p in players_result.scalars().all()}
 
     seat_states = []
     for s in sorted(seats, key=lambda x: x.seat_no):
