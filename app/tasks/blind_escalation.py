@@ -1,11 +1,9 @@
 """Automatic blind escalation background task.
 
-Reads TOURNAMENT_START_AT and BLIND_LEVEL_HOURS from config and
-escalates all table blinds on schedule:
-  Level 0 (start):  SB=1  BB=2
-  Level 1 (+48h):   SB=2  BB=4
-  Level 2 (+96h):   SB=3  BB=6
-  Level 3 (+144h):  SB=4  BB=8
+Blinds rise every BLIND_LEVEL_HOURS hours from TOURNAMENT_START_AT,
+indefinitely, following the formula:
+  level n (0-based) → SB = n+1, BB = (n+1)*2
+  e.g. 1/2 → 2/4 → 3/6 → 4/8 → 5/10 → 6/12 → ...
 """
 from __future__ import annotations
 
@@ -18,31 +16,28 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-BLIND_SCHEDULE: list[tuple[int, int]] = [
-    (1, 2),
-    (2, 4),
-    (3, 6),
-    (4, 8),
-]
-
 _POLL_INTERVAL = 60  # seconds
 
 
+def blinds_for_level(level: int) -> tuple[int, int]:
+    """Return (small_blind, big_blind) for 0-based level. Infinite schedule."""
+    sb = level + 1
+    return sb, sb * 2
+
+
 def get_current_level(now: datetime | None = None) -> int:
-    """Return 0-based blind level index for the given moment."""
+    """Return 0-based blind level for the given moment. Uncapped."""
     if settings.TOURNAMENT_START_AT is None:
         return 0
     if now is None:
         now = datetime.now(timezone.utc)
     start = settings.TOURNAMENT_START_AT
-    # Ensure both are timezone-aware for comparison
     if start.tzinfo is None:
         start = start.replace(tzinfo=timezone.utc)
     if now < start:
         return 0
     elapsed_hours = (now - start).total_seconds() / 3600
-    level = int(elapsed_hours // settings.BLIND_LEVEL_HOURS)
-    return min(level, len(BLIND_SCHEDULE) - 1)
+    return int(elapsed_hours // settings.BLIND_LEVEL_HOURS)
 
 
 def get_blind_level_info(now: datetime | None = None) -> dict[str, Any]:
@@ -69,14 +64,14 @@ def get_blind_level_info(now: datetime | None = None) -> dict[str, Any]:
         start = start.replace(tzinfo=timezone.utc)
 
     # Before tournament starts: show countdown to start
-    waiting = now < start
-    if waiting:
+    if now < start:
+        sb0, bb0 = blinds_for_level(0)
         return {
             "enabled": True,
             "waiting": True,
             "level": 0,
-            "small_blind": BLIND_SCHEDULE[0][0],
-            "big_blind": BLIND_SCHEDULE[0][1],
+            "small_blind": sb0,
+            "big_blind": bb0,
             "tournament_start_at": start.isoformat(),
             "next_level_at": None,
             "next_small_blind": None,
@@ -84,15 +79,9 @@ def get_blind_level_info(now: datetime | None = None) -> dict[str, Any]:
         }
 
     level = get_current_level(now)
-    sb, bb = BLIND_SCHEDULE[level]
-    next_level = level + 1
-    next_level_at: datetime | None = None
-    next_sb: int | None = None
-    next_bb: int | None = None
-
-    if next_level < len(BLIND_SCHEDULE):
-        next_level_at = start + timedelta(hours=next_level * settings.BLIND_LEVEL_HOURS)
-        next_sb, next_bb = BLIND_SCHEDULE[next_level]
+    sb, bb = blinds_for_level(level)
+    next_level_at = start + timedelta(hours=(level + 1) * settings.BLIND_LEVEL_HOURS)
+    next_sb, next_bb = blinds_for_level(level + 1)
 
     return {
         "enabled": True,
@@ -101,7 +90,7 @@ def get_blind_level_info(now: datetime | None = None) -> dict[str, Any]:
         "small_blind": sb,
         "big_blind": bb,
         "tournament_start_at": start.isoformat(),
-        "next_level_at": next_level_at.isoformat() if next_level_at else None,
+        "next_level_at": next_level_at.isoformat(),
         "next_small_blind": next_sb,
         "next_big_blind": next_bb,
     }
@@ -110,7 +99,7 @@ def get_blind_level_info(now: datetime | None = None) -> dict[str, Any]:
 async def _apply_blinds_if_needed() -> None:
     now = datetime.now(timezone.utc)
     level = get_current_level(now)
-    sb, bb = BLIND_SCHEDULE[level]
+    sb, bb = blinds_for_level(level)
 
     from sqlalchemy import select
 
@@ -134,7 +123,7 @@ async def _apply_blinds_if_needed() -> None:
             await session.commit()
             logger.info(
                 "Blind escalation: level=%d blinds=%d/%d applied to tables %s",
-                level, sb, bb, updated,
+                level + 1, sb, bb, updated,
             )
 
 
@@ -220,9 +209,8 @@ async def blind_escalation_loop() -> None:
         return
 
     logger.info(
-        "Blind escalation started: start=%s schedule=%s interval=%dh",
+        "Blind escalation started: start=%s formula=SB=n+1,BB=(n+1)*2 interval=%dh",
         settings.TOURNAMENT_START_AT.isoformat(),
-        BLIND_SCHEDULE,
         settings.BLIND_LEVEL_HOURS,
     )
     while True:
