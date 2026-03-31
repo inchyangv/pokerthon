@@ -31,9 +31,31 @@ from app.middleware.rate_limit import RateLimitMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
 
+def _run_migrations() -> None:
+    """Run alembic migrations synchronously at startup. Safe to call multiple times."""
+    import logging
+    import subprocess
+    import sys
+    logger = logging.getLogger(__name__)
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "alembic", "upgrade", "head"],
+            capture_output=True, text=True, timeout=60,
+        )
+        if result.returncode == 0:
+            logger.info("Migrations applied: %s", result.stdout.strip() or "(already up to date)")
+        else:
+            logger.error("Migration failed (rc=%d): %s", result.returncode, result.stderr[:500])
+    except Exception:
+        logger.exception("Migration runner failed — continuing startup")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- Startup ---
+    import logging
+    _run_migrations()
+
     from app.bots.runner import bot_runner_loop
     from app.bots.seed import seed_bots
     from app.database import async_session_factory
