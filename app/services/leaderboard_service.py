@@ -46,7 +46,7 @@ async def get_leaderboard(
             table = table_result.scalar_one()
             current_table = table.table_no
 
-        total_chips = account.wallet_balance + table_stack
+        total_chips = account.wallet_balance
 
         # Hands played (FINISHED hands only)
         hp_result = await session.execute(
