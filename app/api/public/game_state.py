@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,6 +50,7 @@ class PublicGameState(BaseModel):
 @router.get("/{table_no}/state", response_model=PublicGameState)
 async def get_public_game_state(
     table_no: int,
+    since_version: int | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
 ):
     table_result = await session.execute(select(Table).where(Table.table_no == table_no))
@@ -57,6 +59,10 @@ async def get_public_game_state(
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Table not found"})
 
     state_version = await get_snapshot_version(session, table.id)
+
+    # Skip full query when nothing has changed
+    if since_version is not None and since_version == state_version:
+        return Response(status_code=304)
 
     # Load seats
     seats_result = await session.execute(select(TableSeat).where(TableSeat.table_id == table.id))

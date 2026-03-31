@@ -310,7 +310,16 @@
 
   async function poll() {
     try {
-      const r = await fetch(`/v1/public/tables/${tableNo}/state`);
+      const url = `/v1/public/tables/${tableNo}/state` +
+        (lastVersion >= 0 ? `?since_version=${lastVersion}` : '');
+      const r = await fetch(url);
+      if (r.status === 304) {
+        // Nothing changed — reschedule without re-rendering
+        retryDelay = 1000;
+        pollInterval = lastVersion >= 0 ? pollInterval : 2000;
+        setTimeout(poll, pollInterval);
+        return;
+      }
       if (!r.ok) {
         document.getElementById('statusBar').textContent = `오류: HTTP ${r.status}`;
         setTimeout(poll, retryDelay);
