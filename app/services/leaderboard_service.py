@@ -1,17 +1,14 @@
 """Leaderboard statistics aggregation."""
 from __future__ import annotations
 
-import json
 import time
-from collections import defaultdict
-from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.account import Account
 from app.models.chip import ChipLedger, LedgerReasonType
-from app.models.hand import Hand, HandPlayer, HandResult, HandStatus
+from app.models.hand import Hand, HandPlayer, HandStatus
 from app.models.table import SeatStatus, Table, TableSeat
 
 # In-memory cache: key → (timestamp, data)
@@ -66,41 +63,44 @@ async def get_leaderboard(
         )
         table_no_map = {t.id: t.table_no for t in tables_result.scalars().all()}
 
-    # ── 4. Load all HandPlayers for finished hands (1 query) ─────────────────
-    hp_result = await session.execute(
-        select(HandPlayer)
+    # ── 4. Aggregate hand stats per account in SQL (1 query) ─────────────────
+    # A player "won" a hand when ending_stack > starting_stack (net positive).
+    profit_expr = HandPlayer.ending_stack - HandPlayer.starting_stack
+    agg_result = await session.execute(
+        select(
+            HandPlayer.account_id,
+            func.count().label("hands_played"),
+            func.sum(
+                case((HandPlayer.ending_stack > HandPlayer.starting_stack, 1), else_=0)
+            ).label("hands_won"),
+            func.max(
+                case((HandPlayer.ending_stack > HandPlayer.starting_stack, profit_expr), else_=0)
+            ).label("biggest_pot_won"),
+        )
         .join(Hand, Hand.id == HandPlayer.hand_id)
         .where(
             HandPlayer.account_id.in_(account_ids),
             Hand.status == HandStatus.FINISHED,
         )
+        .group_by(HandPlayer.account_id)
     )
-    hp_by_account: dict[int, list[HandPlayer]] = defaultdict(list)
-    all_hand_ids: set[int] = set()
-    for hp in hp_result.scalars().all():
-        hp_by_account[hp.account_id].append(hp)
-        all_hand_ids.add(hp.hand_id)
+    agg_by_account = {row.account_id: row for row in agg_result}
 
-    # ── 5. Load all HandResults for those hands (1 query) ────────────────────
-    hr_map: dict[int, HandResult] = {}
-    if all_hand_ids:
-        hr_result = await session.execute(
-            select(HandResult).where(HandResult.hand_id.in_(all_hand_ids))
-        )
-        hr_map = {hr.hand_id: hr for hr in hr_result.scalars().all()}
-
-    # ── 6. Load all ADMIN_GRANT ledger entries (1 query) ─────────────────────
+    # ── 5. Aggregate ADMIN_GRANT chips per account in SQL (1 query) ──────────
     grant_result = await session.execute(
-        select(ChipLedger).where(
+        select(
+            ChipLedger.account_id,
+            func.sum(ChipLedger.delta).label("total_granted"),
+        )
+        .where(
             ChipLedger.account_id.in_(account_ids),
             ChipLedger.reason_type == LedgerReasonType.ADMIN_GRANT,
         )
+        .group_by(ChipLedger.account_id)
     )
-    granted_by_account: dict[int, int] = defaultdict(int)
-    for g in grant_result.scalars().all():
-        granted_by_account[g.account_id] += g.delta
+    granted_by_account: dict[int, int] = {row.account_id: int(row.total_granted) for row in grant_result}
 
-    # ── 7. Assemble results in memory ────────────────────────────────────────
+    # ── 6. Assemble results in memory ────────────────────────────────────────
     items = []
     for account in accounts:
         seat = seat_map.get(account.id)
@@ -109,26 +109,10 @@ async def get_leaderboard(
 
         total_chips = account.wallet_balance
 
-        hp_list = hp_by_account.get(account.id, [])
-        hands_played = len(hp_list)
-        hands_won = 0
-        biggest_pot_won = 0
-
-        for hp in hp_list:
-            hr = hr_map.get(hp.hand_id)
-            if hr:
-                try:
-                    result_data = json.loads(hr.result_json)
-                    awards = result_data.get("awards", {})
-                    if str(hp.seat_no) in awards:
-                        hands_won += 1
-                        won_amount = awards[str(hp.seat_no)]
-                        if isinstance(won_amount, (int, float)):
-                            won_chips = int(won_amount) - hp.starting_stack
-                            if won_chips > biggest_pot_won:
-                                biggest_pot_won = won_chips
-                except Exception:
-                    pass
+        agg = agg_by_account.get(account.id)
+        hands_played = int(agg.hands_played) if agg else 0
+        hands_won = int(agg.hands_won) if agg else 0
+        biggest_pot_won = int(agg.biggest_pot_won) if agg else 0
 
         win_rate = (hands_won / hands_played) if hands_played > 0 else 0.0
         total_granted = granted_by_account.get(account.id, 0)
@@ -148,7 +132,7 @@ async def get_leaderboard(
             "current_table": current_table,
         })
 
-    # ── 8. Sort + slice ──────────────────────────────────────────────────────
+    # ── 7. Sort + slice ──────────────────────────────────────────────────────
     sort_key_map = {
         "chips": lambda x: -x["total_chips"],
         "profit": lambda x: -x["total_profit"],
