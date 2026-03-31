@@ -85,8 +85,6 @@ async def close_table(session: AsyncSession, table_no: int) -> Table:
         raise ValueError("Table is already closed")
 
     for seat in table.seats:
-        if seat.seat_status != SeatStatus.EMPTY and seat.account_id and seat.stack > 0:
-            await transfer_from_table(session, seat.account_id, seat.stack, table.id)
         if seat.seat_status != SeatStatus.EMPTY:
             seat.seat_status = SeatStatus.EMPTY
             seat.account_id = None
