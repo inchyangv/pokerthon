@@ -24,6 +24,11 @@ class MergeTablesBody(BaseModel):
     src_table_no: int
     dst_table_no: int
 
+
+class AdminSeatBody(BaseModel):
+    account_id: int
+    seat_no: int | None = None
+
 router = APIRouter(prefix="/admin/tables", tags=["admin-tables"])
 
 
@@ -167,3 +172,22 @@ async def merge_tables_endpoint(
     except ValueError as e:
         raise HTTPException(status_code=409, detail={"code": "CONFLICT", "message": str(e)})
     return result
+
+
+@router.post("/{table_no}/seat-player")
+async def admin_seat_player(
+    table_no: int,
+    body: AdminSeatBody,
+    session: AsyncSession = Depends(get_session),
+):
+    """Admin: seat a player at a table without requiring HMAC auth."""
+    from app.services.seat_service import sit
+    try:
+        seat = await sit(session, body.account_id, table_no, body.seat_no)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": str(e)})
+    except ValueError as e:
+        msg = str(e)
+        code = msg.split(":")[0] if ":" in msg else "INVALID_ACTION"
+        raise HTTPException(status_code=409, detail={"code": code, "message": msg})
+    return {"table_no": table_no, "seat_no": seat.seat_no, "account_id": body.account_id, "stack": seat.stack}

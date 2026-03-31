@@ -88,7 +88,7 @@ with httpx.Client(base_url=BASE_URL, headers=HEADERS, follow_redirects=True, tim
 
     # ── 4. 테이블 생성 ───────────────────────────────────────────────────────
     num_players = len(human_accounts)
-    num_tables = 2 if num_players >= 10 else 1
+    num_tables = 2
     print(f"\n[4] 테이블 {num_tables}개 생성 (참가자 {num_players}명)")
     for n in range(1, num_tables + 1):
         ok(c.post("/admin/tables", json={"table_no": n}), f"테이블 {n} 생성")
@@ -96,11 +96,11 @@ with httpx.Client(base_url=BASE_URL, headers=HEADERS, follow_redirects=True, tim
     print(f"""
 ✅ 토너먼트 셋업 완료
    - 참가자: {num_players}명
-   - 테이블: {num_tables}개
+   - 테이블: {num_tables}개 (고정)
    - 칩: 인당 {TOURNAMENT_CHIPS}개
 
 다음 단계:
-   1. 각 참가자가 테이블에 착석 (POST /v1/private/tables/{{no}}/sit)
-   2. 어드민에서 "핸드 시작" 버튼 클릭
-   {'3. 10명 참가 시 탈락 후 어드민이 테이블 머지 필요' if num_tables > 1 else ''}
+   1. Railway 환경변수 TOURNAMENT_MODE=true 로 설정 후 재배포
+   2. 각 참가자가 테이블에 착석 (POST /v1/private/tables/{{no}}/sit)
+   3. 4월 2일 자정(KST)에 서버가 자동으로 핸드 시작
 """)
