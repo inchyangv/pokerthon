@@ -112,74 +112,86 @@
       const data = await r.json();
       const tables = data.tables || data;
       if (!Array.isArray(tables)) return;
-
-      // Stats bar
-      const live = tables.filter(t => t.hand_id).length;
-      const seated = tables.reduce((s, t) => s + (t.seated_count || 0), 0);
-      document.getElementById('sbTables').textContent = tables.length;
-      document.getElementById('sbLive').textContent   = live;
-      document.getElementById('sbSeated').textContent = seated;
-
-      // V11: Update table cards
-      const grid = document.getElementById('tableGrid');
-      const existing = new Map();
-      grid.querySelectorAll('.table-card').forEach(el => {
-        existing.set(el.dataset.tableNo, el);
-      });
-
-      const seen = new Set();
-      for (const t of tables) {
-        const key = String(t.table_no);
-        seen.add(key);
-        const card = existing.get(key);
-        if (card) {
-          // Update existing card
-          card.innerHTML = buildCardHtml(t);
-        } else {
-          // Add new table card
-          const a = document.createElement('a');
-          a.href = `/viewer/tables/${t.table_no}`;
-          a.className = 'table-card';
-          a.dataset.tableNo = key;
-          a.innerHTML = buildCardHtml(t);
-          grid.appendChild(a);
-        }
-      }
-
-      // Remove cards for tables that no longer exist
-      existing.forEach((el, key) => {
-        if (!seen.has(key)) el.remove();
-      });
-
-      // Handle empty state
-      const emptyMsg = grid.querySelector('p');
-      if (tables.length === 0 && !emptyMsg) {
-        grid.innerHTML = '<p style="color:var(--text-muted);">테이블이 없습니다.</p>';
-      } else if (tables.length > 0 && emptyMsg) {
-        emptyMsg.remove();
-      }
+      updateLobby(tables);
     } catch(e) {}
   }
 
+  // ── SSE (primary) ─────────────────────────────────────────────────────────
+  function startLobbySSE() {
+    if (!window.EventSource) { startLobbyPolling(); return; }
+
+    const es = new EventSource('/v1/public/tables/stream');
+
+    es.addEventListener('tables', (e) => {
+      try {
+        const tables = JSON.parse(e.data);
+        if (Array.isArray(tables)) updateLobby(tables);
+      } catch(_) {}
+    });
+
+    es.onerror = () => {
+      es.close();
+      startLobbyPolling();
+    };
+  }
+
+  function updateLobby(tables) {
+    const live = tables.filter(t => t.hand_id).length;
+    const seated = tables.reduce((s, t) => s + (t.seated_count || 0), 0);
+    document.getElementById('sbTables').textContent = tables.length;
+    document.getElementById('sbLive').textContent   = live;
+    document.getElementById('sbSeated').textContent = seated;
+
+    const grid = document.getElementById('tableGrid');
+    const existing = new Map();
+    grid.querySelectorAll('.table-card').forEach(el => {
+      existing.set(el.dataset.tableNo, el);
+    });
+    const seen = new Set();
+    for (const t of tables) {
+      const key = String(t.table_no);
+      seen.add(key);
+      const card = existing.get(key);
+      if (card) {
+        card.innerHTML = buildCardHtml(t);
+      } else {
+        const a = document.createElement('a');
+        a.href = `/viewer/tables/${t.table_no}`;
+        a.className = 'table-card';
+        a.dataset.tableNo = key;
+        a.innerHTML = buildCardHtml(t);
+        grid.appendChild(a);
+      }
+    }
+    existing.forEach((el, key) => { if (!seen.has(key)) el.remove(); });
+    const emptyMsg = grid.querySelector('p');
+    if (tables.length === 0 && !emptyMsg) {
+      grid.innerHTML = '<p style="color:var(--text-muted);">테이블이 없습니다.</p>';
+    } else if (tables.length > 0 && emptyMsg) {
+      emptyMsg.remove();
+    }
+  }
+
+  // ── Polling fallback ───────────────────────────────────────────────────────
   let lobbyTimer = null;
+
+  function startLobbyPolling() {
+    scheduleLobby(5000);
+  }
 
   function scheduleLobby(interval) {
     if (lobbyTimer) clearTimeout(lobbyTimer);
     lobbyTimer = setTimeout(async () => {
       await refreshLobby();
-      // Determine next interval from current DOM state
       const hasLive = document.querySelectorAll('.badge-live').length > 0;
       scheduleLobby(document.hidden ? 60000 : (hasLive ? 5000 : 30000));
     }, interval);
   }
 
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
-      // Resume immediately on tab focus
-      scheduleLobby(0);
-    }
+    if (!document.hidden) scheduleLobby(0);
   });
 
-  scheduleLobby(5000);
+  startLobbySSE();
 </script>
 {% endblock %}
