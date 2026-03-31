@@ -268,8 +268,8 @@ async def get_latest_hand_actions(
 ) -> dict[str, Any]:
     """Return actions from the latest hand (in-progress or most recently finished).
 
-    If after_seq is provided, only actions with seq > after_seq are returned,
-    enabling incremental updates on the client side.
+    If after_seq is provided, only actions with seq > after_seq are returned
+    at the SQL level, enabling efficient incremental updates.
     """
     hand_result = await session.execute(
         select(Hand)
@@ -280,9 +280,42 @@ async def get_latest_hand_actions(
     hand = hand_result.scalar_one_or_none()
     if not hand:
         return {"actions": [], "hand_id": None}
-    actions = await get_hand_actions(session, hand.id)
+
+    # Build query with SQL-level filtering
+    q = select(HandAction).where(HandAction.hand_id == hand.id)
     if after_seq is not None:
-        actions = [a for a in actions if a["seq"] > after_seq]
-    elif limit and len(actions) > limit:
-        actions = actions[-limit:]
-    return {"actions": actions, "hand_id": hand.id}
+        q = q.where(HandAction.seq > after_seq)
+    q = q.order_by(HandAction.seq)
+    if after_seq is None and limit:
+        # For full fetch, take only the last `limit` actions
+        q = q.order_by(HandAction.seq.desc()).limit(limit)
+
+    actions_result = await session.execute(q)
+    actions = list(actions_result.scalars().all())
+
+    # For full fetch (desc order), reverse to get ascending order
+    if after_seq is None:
+        actions = list(reversed(actions))
+
+    # Build nickname map only for the fetched subset
+    acc_ids = list({a.actor_account_id for a in actions if a.actor_account_id})
+    nicknames = await _nickname_map(session, acc_ids)
+
+    return {
+        "actions": [
+            {
+                "seq": a.seq,
+                "street": a.street,
+                "actor_seat": a.actor_seat_no,
+                "actor_nickname": nicknames.get(a.actor_account_id) if a.actor_account_id else None,
+                "action_type": a.action_type,
+                "amount": a.amount,
+                "amount_to": a.amount_to,
+                "is_system_action": a.is_system_action,
+                "payload": json.loads(a.payload_json) if a.payload_json else None,
+                "timestamp": a.created_at,
+            }
+            for a in actions
+        ],
+        "hand_id": hand.id,
+    }
