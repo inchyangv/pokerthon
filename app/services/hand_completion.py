@@ -107,21 +107,37 @@ async def complete_hand(
     # --- 3. Bump snapshot ---
     await bump_snapshot(session, hand.table_id)
 
+    # --- 4. Check remaining players ---
+    seats_after_q = await session.execute(
+        select(TableSeat).where(TableSeat.table_id == hand.table_id)
+    )
+    eligible_after = [
+        s for s in seats_after_q.scalars().all()
+        if s.seat_status in (SeatStatus.SEATED, SeatStatus.LEAVING_AFTER_HAND)
+        and s.stack > 0
+    ]
+
+    # Tournament winner: exactly 1 player remaining at this table
+    if len(eligible_after) == 1:
+        winner_seat = eligible_after[0]
+        await _log_action(
+            session, hand.id, "TOURNAMENT_WINNER", None,
+            actor_account_id=winner_seat.account_id,
+            actor_seat_no=winner_seat.seat_no,
+            is_system=True,
+        )
+        table.status = TableStatus.PAUSED
+        import logging
+        logging.getLogger(__name__).info(
+            "TOURNAMENT_WINNER: table=%d seat=%d account=%d",
+            table.table_no, winner_seat.seat_no, winner_seat.account_id,
+        )
+
     await session.commit()
 
-    # --- 4. Schedule next hand ---
-    if table.status == TableStatus.OPEN:
-        # Re-read seats to check eligible count after evictions
-        seats_after_q = await session.execute(
-            select(TableSeat).where(TableSeat.table_id == hand.table_id)
-        )
-        eligible_after = [
-            s for s in seats_after_q.scalars().all()
-            if s.seat_status in (SeatStatus.SEATED, SeatStatus.LEAVING_AFTER_HAND)
-            and s.stack > 0
-        ]
-        if len(eligible_after) >= 2:
-            asyncio.ensure_future(_delayed_next_hand(hand.table_id))
+    # --- 5. Schedule next hand (only when 2+ players remain) ---
+    if table.status == TableStatus.OPEN and len(eligible_after) >= 2:
+        asyncio.ensure_future(_delayed_next_hand(hand.table_id))
 
 
 async def _delayed_next_hand(table_id: int) -> None:

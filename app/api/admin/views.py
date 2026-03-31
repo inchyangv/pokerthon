@@ -645,12 +645,22 @@ async def table_detail_ui(
             "finished_at": h.finished_at,
         })
 
+    # Tournament winner: table is PAUSED and exactly 1 player with chips remains
+    from app.models.table import TableStatus as TS
+    tournament_winner = None
+    if table.status == TS.PAUSED:
+        remaining = [s for s in raw_seats if s.seat_status != SeatStatus.EMPTY and s.stack > 0]
+        if len(remaining) == 1:
+            winner_acc_id = remaining[0].account_id
+            tournament_winner = nickname_map.get(winner_acc_id) or f"Account #{winner_acc_id}"
+
     return templates.TemplateResponse(request, "admin/table_detail.html", {
         "flash": None,
         "table": table,
         "seats": seats_out,
         "current_hand": current_hand_data,
         "hand_history": hand_history,
+        "tournament_winner": tournament_winner,
     })
 
 

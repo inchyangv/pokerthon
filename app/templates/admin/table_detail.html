@@ -3,6 +3,11 @@
 {% block content %}
 <a href="/admin/tables" style="color:#3498db;">← 테이블 목록</a>
 <h1>테이블 {{ table.table_no }}</h1>
+{% if tournament_winner %}
+<div style="background:#27ae60;color:#fff;padding:1rem 1.5rem;border-radius:8px;margin-bottom:1rem;font-size:1.2rem;font-weight:bold;">
+  🏆 토너먼트 우승자: {{ tournament_winner }}
+</div>
+{% endif %}
 <div class="grid-2">
   <div>
     <div class="card">
