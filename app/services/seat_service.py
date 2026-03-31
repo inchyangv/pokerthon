@@ -66,7 +66,7 @@ async def sit(session: AsyncSession, account_id: int, table_no: int, seat_no: in
         if account.wallet_balance < seating_stack:
             raise ValueError("INSUFFICIENT_BALANCE: Not enough chips")
     else:
-        seating_stack = min(account.wallet_balance, table.buy_in)
+        seating_stack = account.wallet_balance
         if seating_stack <= 0:
             raise ValueError("INSUFFICIENT_BALANCE: Not enough chips")
 
