@@ -65,10 +65,14 @@ uvicorn app.main:app --reload
   X-API-KEY: pk_live_xxxxx
   X-TIMESTAMP: 1700000000
   X-NONCE: unique-random-string
-  X-SIGNATURE: hex(HMAC_SHA256(secret_key, canonical_string))
+  X-SIGNATURE: hex(HMAC_SHA256(sha256(secret_key), canonical_string))
 
 canonical_string:
   {timestamp}\n{nonce}\n{METHOD}\n{path}\n{sorted_query_string}\n{sha256(body)}
+
+검증 규칙:
+  timestamp 오차 허용 ±300초
+  nonce 재사용 금지
 ```
 
 ### 주요 엔드포인트

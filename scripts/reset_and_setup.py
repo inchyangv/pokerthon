@@ -71,10 +71,11 @@ with httpx.Client(base_url=BASE_URL, headers=HEADERS, follow_redirects=True, tim
                        json={"amount": 1000, "reason": "initial_setup"}),
                 f"  칩 1000 지급: {name}",
             )
-            # Seat bot
-            ok(
-                c.post(f"/admin/bots/{bot['bot_id']}/seat", json={"table_no": table_no}),
-                f"  착석: {name} → 테이블 {table_no}",
-            )
+            # Seat bot (unseat first if bot runner auto-seated it elsewhere)
+            r = c.post(f"/admin/bots/{bot['bot_id']}/seat", json={"table_no": table_no})
+            if r.status_code == 409:
+                c.post(f"/admin/bots/{bot['bot_id']}/unseat")
+                r = c.post(f"/admin/bots/{bot['bot_id']}/seat", json={"table_no": table_no})
+            ok(r, f"  착석: {name} → 테이블 {table_no}")
 
     print("\n✅ 셋업 완료: 테이블 3개, 테이블당 봇 3개 (TAG·LAG·FISH)")
