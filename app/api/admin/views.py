@@ -488,6 +488,27 @@ async def close_table_ui(
     return RedirectResponse(url=f"/admin/tables/{table_no}", status_code=302)
 
 
+@router.post("/tables/{table_no}/start-hand-form")
+async def start_hand_ui(
+    request: Request, table_no: int, session: AsyncSession = Depends(get_session)
+):
+    if not _is_authenticated(request):
+        return _redirect_login()
+    from sqlalchemy import select
+    from app.models.table import Table, TableStatus
+    from app.services.hand_service import start_hand, get_active_hand
+    from app.core.table_lock import get_table_lock
+
+    table_r = await session.execute(select(Table).where(Table.table_no == table_no))
+    table = table_r.scalar_one_or_none()
+    if table and table.status == TableStatus.OPEN:
+        async with get_table_lock(table_no):
+            active = await get_active_hand(session, table.id)
+            if not active:
+                await start_hand(session, table.id)
+    return RedirectResponse(url=f"/admin/tables/{table_no}", status_code=302)
+
+
 @router.get("/tables/{table_no}", response_class=HTMLResponse)
 async def table_detail_ui(
     request: Request, table_no: int, session: AsyncSession = Depends(get_session)

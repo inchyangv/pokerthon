@@ -10,8 +10,13 @@
       <p><strong>상태:</strong> <span class="badge badge-{{ table.status.lower() }}">{{ table.status }}</span></p>
       <p><strong>블라인드:</strong> {{ table.small_blind }} / {{ table.big_blind }}</p>
       <p><strong>바이인:</strong> {{ table.buy_in }}</p>
-      <div style="display:flex;gap:0.5rem;margin-top:0.5rem;">
+      <div style="display:flex;gap:0.5rem;margin-top:0.5rem;flex-wrap:wrap;">
         {% if table.status == 'OPEN' %}
+          {% if not current_hand %}
+            <form method="post" action="/admin/tables/{{ table.table_no }}/start-hand-form">
+              <button type="submit" class="btn btn-sm btn-primary" style="background:#27ae60;">▶ 핸드 시작</button>
+            </form>
+          {% endif %}
           <form method="post" action="/admin/tables/{{ table.table_no }}/pause-form"><button type="submit" class="btn btn-sm btn-danger">일시정지</button></form>
         {% elif table.status == 'PAUSED' %}
           <form method="post" action="/admin/tables/{{ table.table_no }}/resume-form"><button type="submit" class="btn btn-sm btn-primary">재개</button></form>

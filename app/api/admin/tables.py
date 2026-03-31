@@ -16,6 +16,32 @@ from app.services.table_service import (
 router = APIRouter(prefix="/admin/tables", tags=["admin-tables"])
 
 
+@router.post("/{table_no}/start-hand", status_code=200)
+async def start_hand_endpoint(table_no: int, session: AsyncSession = Depends(get_session)):
+    """Manually start a new hand at the given table."""
+    from sqlalchemy import select
+    from app.models.table import Table, TableStatus
+    from app.services.hand_service import start_hand, get_active_hand
+    from app.core.table_lock import get_table_lock
+
+    table_r = await session.execute(select(Table).where(Table.table_no == table_no))
+    table = table_r.scalar_one_or_none()
+    if not table:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Table not found"})
+    if table.status != TableStatus.OPEN:
+        raise HTTPException(status_code=409, detail={"code": "TABLE_NOT_OPEN", "message": f"Table is {table.status.value}"})
+
+    async with get_table_lock(table_no):
+        active = await get_active_hand(session, table.id)
+        if active:
+            raise HTTPException(status_code=409, detail={"code": "HAND_IN_PROGRESS", "message": "A hand is already in progress"})
+        hand = await start_hand(session, table.id)
+        if not hand:
+            raise HTTPException(status_code=409, detail={"code": "CANNOT_START", "message": "Need at least 2 seated players with chips"})
+
+    return {"hand_id": hand.id, "hand_no": hand.hand_no}
+
+
 @router.post("", response_model=TableResponse, status_code=201)
 async def create_table_endpoint(body: TableCreate, session: AsyncSession = Depends(get_session)):
     try:
