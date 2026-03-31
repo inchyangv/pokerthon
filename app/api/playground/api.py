@@ -57,7 +57,14 @@ async def sign_endpoint(payload: SignRequest) -> dict[str, Any]:
             "X-SIGNATURE": signature,
         },
         "debug": {
+            "method": payload.method.upper(),
+            "path": payload.path,
+            "canonical_query_string": qs,
+            "timestamp": timestamp,
+            "nonce": nonce,
             "body_hash": body_hash,
+            "canonical_string": canonical,
+            "signing_key": signing_key,
         },
     }
 
@@ -88,7 +95,14 @@ async def proxy_endpoint(payload: ProxyRequest, request: Request) -> dict[str, A
         url = f"{url}?{qs}"
 
     request_debug = {
+        "method": payload.method.upper(),
+        "path": payload.path,
+        "canonical_query_string": qs,
+        "timestamp": timestamp,
+        "nonce": nonce,
         "body_hash": body_hash,
+        "canonical_string": canonical,
+        "signing_key": signing_key,
     }
 
     try:

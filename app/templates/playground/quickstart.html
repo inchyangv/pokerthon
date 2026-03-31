@@ -37,6 +37,15 @@
       </div>
       <div class="qs-card-body">
         <p class="text-sm text-muted mb-3"><code class="code-inline">GET /v1/private/me</code>를 호출해서 내 계정 정보를 조회합니다.</p>
+        <details class="mb-3">
+          <summary class="text-muted text-sm" style="cursor:pointer">인증 실패 시 먼저 확인할 항목</summary>
+          <div class="code-block mt-2" style="font-size:.8rem">
+1) X-TIMESTAMP는 현재 시각 기준 ±300초 이내인지
+2) X-NONCE를 요청마다 새 값으로 생성했는지 (재사용 금지)
+3) signing_key를 raw secret이 아닌 SHA-256(secret_key)로 만들었는지
+4) canonical string의 method/path/query/body-hash가 실제 요청과 완전히 동일한지
+          </div>
+        </details>
         <button class="btn btn-primary" onclick="qsStep1()">테스트</button>
         <div id="qs-r1" class="result-box hidden mt-3"></div>
         <details class="mt-3">

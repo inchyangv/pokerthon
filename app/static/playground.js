@@ -373,6 +373,23 @@ function renderResponse(panel, result, showDebug) {
   const bodyStr = JSON.stringify(result.response_body, null, 2);
 
   let debugHtml = '';
+  let authHintHtml = '';
+  const detailMsg = (result.response_body && result.response_body.detail && result.response_body.detail.message)
+    ? String(result.response_body.detail.message)
+    : '';
+
+  if (showDebug && sc === 401) {
+    authHintHtml = `
+      <div class="resp-debug mt-2">
+        <div class="text-xs text-muted mb-1">401 인증 실패 점검</div>
+        <div class="code-block" style="font-size:.75rem;white-space:pre-wrap">message: ${escHtml(detailMsg || '(없음)')}
+1) X-TIMESTAMP가 현재 시각 기준 ±300초인지
+2) X-NONCE를 재사용하지 않았는지
+3) signing_key = SHA-256(secret_key)로 계산했는지
+4) method/path/query/body hash가 canonical string과 완전히 일치하는지</div>
+      </div>`;
+  }
+
   if (showDebug && result.request_debug) {
     const d = result.request_debug;
     const authHeaders = Object.entries(result.headers || {}).map(([k,v]) =>
@@ -405,6 +422,7 @@ function renderResponse(panel, result, showDebug) {
            onclick="copyToClip(this)">${syntaxHighlight(bodyStr)}</pre>
       <div class="text-xs text-muted mt-1">응답 JSON 클릭 시 클립보드 복사</div>
     </div>
+    ${authHintHtml}
     ${debugHtml}`;
 }
 

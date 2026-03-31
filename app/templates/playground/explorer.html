@@ -95,6 +95,9 @@
                oninput="saveCreds()">
       </div>
     </div>
+    <div class="code-block mt-2" style="font-size:.8rem">
+      Private 인증 체크: timestamp는 ±300초 이내, nonce는 매 요청마다 새 값, signing_key는 SHA-256(secret_key), canonical string은 실제 요청과 동일해야 합니다.
+    </div>
 
     <!-- Endpoint bar -->
     <div class="endpoint-bar" id="endpoint-bar">

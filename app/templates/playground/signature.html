@@ -209,9 +209,9 @@ async function generateSignature() {
     const data = await resp.json();
 
     // Populate steps
-    document.getElementById('s1-hash').textContent = data.debug.body_hash;
-    document.getElementById('s2-canonical').textContent = data.debug.canonical_string;
-    document.getElementById('s3-key').textContent = data.debug.signing_key;
+    document.getElementById('s1-hash').textContent = data.debug?.body_hash || '';
+    document.getElementById('s2-canonical').textContent = data.debug?.canonical_string || '';
+    document.getElementById('s3-key').textContent = data.debug?.signing_key || '';
     document.getElementById('s4-sig').textContent = data.headers['X-SIGNATURE'];
 
     // Headers
