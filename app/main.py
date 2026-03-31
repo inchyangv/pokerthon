@@ -38,6 +38,7 @@ async def lifespan(app: FastAPI):
     from app.bots.seed import seed_bots
     from app.database import async_session_factory
     from app.services.recovery_service import recover_in_progress_hands
+    from app.tasks.keepalive import keepalive_loop
     from app.tasks.nonce_cleanup import nonce_cleanup_loop
     from app.tasks.timeout_checker import timeout_checker_loop
 
@@ -54,11 +55,12 @@ async def lifespan(app: FastAPI):
     timeout_task = asyncio.ensure_future(timeout_checker_loop())
     nonce_task = asyncio.ensure_future(nonce_cleanup_loop())
     bot_task = asyncio.ensure_future(bot_runner_loop())
+    keepalive_task = asyncio.ensure_future(keepalive_loop())
 
     yield
 
     # --- Shutdown ---
-    for task in (timeout_task, nonce_task, bot_task):
+    for task in (timeout_task, nonce_task, bot_task, keepalive_task):
         task.cancel()
         try:
             await task

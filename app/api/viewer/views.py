@@ -13,8 +13,7 @@ from starlette.requests import Request
 
 from app.database import get_session
 from app.models.hand import Hand, HandStatus
-from app.models.table import SeatStatus, Table, TableSeat
-from app.services.leaderboard_service import get_leaderboard
+from app.models.table import SeatStatus, Table
 
 
 def _fmt_ts(ts) -> str:
@@ -83,11 +82,9 @@ async def lobby(request: Request, session: AsyncSession = Depends(get_session)):
             "has_active_hand": active_hands.get(t.id, False),
         })
 
-    leaderboard = await get_leaderboard(session, sort_by="chips", limit=5)
-
+    # Leaderboard rendered client-side via AJAX to avoid blocking page render
     return templates.TemplateResponse(request, "viewer/lobby.html", {
         "tables": tables_out,
-        "leaderboard": leaderboard,
     })
 
 
