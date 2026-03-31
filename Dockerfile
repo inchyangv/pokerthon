@@ -23,5 +23,5 @@ COPY app/ ./app/
 # Expose port
 EXPOSE 8000
 
-# Entrypoint: run migrations then start server
-CMD alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --timeout-keep-alive 75 --backlog 2048
+# Migrations run via Railway releaseCommand; start server directly
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --timeout-keep-alive 75 --backlog 2048

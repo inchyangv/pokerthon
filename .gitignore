@@ -13,5 +13,8 @@ alembic/versions/*.pyc
 *.db
 *.sqlite
 .DS_Store
+.idea/
+.tmp/
 *.pptx
 make_ppt.py
+scripts/accounts.csv

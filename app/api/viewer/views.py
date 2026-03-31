@@ -14,6 +14,7 @@ from starlette.requests import Request
 from app.database import get_session
 from app.models.hand import Hand, HandStatus
 from app.models.table import SeatStatus, Table
+from app.services.leaderboard_service import get_leaderboard
 
 
 def _fmt_ts(ts) -> str:

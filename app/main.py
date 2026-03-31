@@ -42,15 +42,20 @@ async def lifespan(app: FastAPI):
     from app.tasks.nonce_cleanup import nonce_cleanup_loop
     from app.tasks.timeout_checker import timeout_checker_loop
 
-    async with async_session_factory() as session:
-        await recover_in_progress_hands(session)
-
-    try:
+    async def _recover():
         async with async_session_factory() as session:
-            await seed_bots(session)
-    except Exception:
-        import logging
-        logging.getLogger(__name__).exception("Bot seed failed — continuing startup")
+            await recover_in_progress_hands(session)
+
+    async def _seed():
+        try:
+            async with async_session_factory() as session:
+                await seed_bots(session)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Bot seed failed — continuing startup")
+
+    # Run recovery and seeding in parallel to reduce startup latency
+    await asyncio.gather(_recover(), _seed())
 
     timeout_task = asyncio.ensure_future(timeout_checker_loop())
     nonce_task = asyncio.ensure_future(nonce_cleanup_loop())

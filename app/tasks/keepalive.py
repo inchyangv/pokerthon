@@ -10,7 +10,7 @@ _INTERVAL = 55  # seconds — just under Railway's 60-second idle timeout
 
 async def keepalive_loop() -> None:
     """Refresh leaderboard cache every ~55 s to prevent cold-query latency on first visitor."""
-    await asyncio.sleep(30)  # let startup complete first
+    await asyncio.sleep(2)  # let startup complete first
     while True:
         try:
             from app.database import async_session_factory
