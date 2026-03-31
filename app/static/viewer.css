@@ -759,3 +759,7 @@ html { scrollbar-color: var(--border) var(--bg); }
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+.blind-level-waiting {
+  background: linear-gradient(135deg, rgba(100,180,255,.12), rgba(60,130,255,.08));
+  border-color: rgba(100,180,255,.4);
+}

@@ -177,6 +177,17 @@ async def _process_bot_turn(session: AsyncSession, bot_profile: BotProfile) -> N
 
 async def _auto_start_hands() -> None:
     """Start hands on tables with >= 2 seated players but no active hand."""
+    # Gate: if TOURNAMENT_START_AT is set, don't auto-start before it.
+    # tournament_start_loop() handles the initial burst at T+0.
+    if settings.TOURNAMENT_START_AT is not None:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        start = settings.TOURNAMENT_START_AT
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        if now < start:
+            return
+
     from app.models.table import Table, TableStatus
     from app.services.hand_service import get_active_hand, start_hand
     from app.core.table_lock import get_table_lock

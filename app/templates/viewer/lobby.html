@@ -6,6 +6,16 @@
 
 {% if blind_level.enabled %}
 <!-- Blind Level Banner -->
+{% if blind_level.waiting %}
+<div class="blind-level-banner blind-level-waiting" id="blindBanner">
+  <span class="blind-level-num">⏳ 대회 대기 중</span>
+  <span class="blind-level-blinds">시작 블라인드: {{ blind_level.small_blind }}/{{ blind_level.big_blind }}</span>
+  <span class="blind-level-next">
+    핸드 시작까지:
+    <span id="blindCountdown" data-until="{{ blind_level.tournament_start_at }}">계산 중…</span>
+  </span>
+</div>
+{% else %}
 <div class="blind-level-banner" id="blindBanner">
   <span class="blind-level-num">Level {{ blind_level.level }}</span>
   <span class="blind-level-blinds">SB/BB: {{ blind_level.small_blind }}/{{ blind_level.big_blind }}</span>
@@ -18,6 +28,7 @@
   <span class="blind-level-next">최종 레벨</span>
   {% endif %}
 </div>
+{% endif %}
 {% endif %}
 
 <!-- Stats Bar -->

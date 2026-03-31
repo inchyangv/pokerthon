@@ -50,26 +50,57 @@ def get_blind_level_info(now: datetime | None = None) -> dict[str, Any]:
     if now is None:
         now = datetime.now(timezone.utc)
     enabled = settings.TOURNAMENT_START_AT is not None
+
+    if not enabled:
+        return {
+            "enabled": False,
+            "waiting": False,
+            "level": 1,
+            "small_blind": 1,
+            "big_blind": 2,
+            "tournament_start_at": None,
+            "next_level_at": None,
+            "next_small_blind": None,
+            "next_big_blind": None,
+        }
+
+    start = settings.TOURNAMENT_START_AT
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+
+    # Before tournament starts: show countdown to start
+    waiting = now < start
+    if waiting:
+        return {
+            "enabled": True,
+            "waiting": True,
+            "level": 0,
+            "small_blind": BLIND_SCHEDULE[0][0],
+            "big_blind": BLIND_SCHEDULE[0][1],
+            "tournament_start_at": start.isoformat(),
+            "next_level_at": None,
+            "next_small_blind": None,
+            "next_big_blind": None,
+        }
+
     level = get_current_level(now)
     sb, bb = BLIND_SCHEDULE[level]
-
     next_level = level + 1
     next_level_at: datetime | None = None
     next_sb: int | None = None
     next_bb: int | None = None
 
-    if enabled and next_level < len(BLIND_SCHEDULE):
-        start = settings.TOURNAMENT_START_AT
-        if start.tzinfo is None:
-            start = start.replace(tzinfo=timezone.utc)
+    if next_level < len(BLIND_SCHEDULE):
         next_level_at = start + timedelta(hours=next_level * settings.BLIND_LEVEL_HOURS)
         next_sb, next_bb = BLIND_SCHEDULE[next_level]
 
     return {
-        "enabled": enabled,
+        "enabled": True,
+        "waiting": False,
         "level": level + 1,           # 1-indexed for display
         "small_blind": sb,
         "big_blind": bb,
+        "tournament_start_at": start.isoformat(),
         "next_level_at": next_level_at.isoformat() if next_level_at else None,
         "next_small_blind": next_sb,
         "next_big_blind": next_bb,
@@ -105,6 +136,82 @@ async def _apply_blinds_if_needed() -> None:
                 "Blind escalation: level=%d blinds=%d/%d applied to tables %s",
                 level, sb, bb, updated,
             )
+
+
+async def _start_all_eligible_tables() -> None:
+    """Start hands on every OPEN table that has >= 2 seated players."""
+    from sqlalchemy import select
+
+    from app.core.table_lock import get_table_lock
+    from app.database import async_session_factory
+    from app.models.table import SeatStatus, Table, TableSeat, TableStatus
+    from app.services.hand_service import get_active_hand, start_hand
+
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(Table).where(Table.status == TableStatus.OPEN)
+        )
+        tables = list(result.scalars().all())
+
+    for table in tables:
+        try:
+            async with async_session_factory() as session:
+                active = await get_active_hand(session, table.id)
+                if active is not None:
+                    continue
+
+                seats_result = await session.execute(
+                    select(TableSeat).where(TableSeat.table_id == table.id)
+                )
+                eligible = [
+                    s for s in seats_result.scalars().all()
+                    if s.seat_status in (SeatStatus.SEATED, SeatStatus.LEAVING_AFTER_HAND)
+                    and s.stack > 0
+                ]
+                if len(eligible) < 2:
+                    logger.warning(
+                        "Tournament start: table %d has only %d eligible player(s), skipping",
+                        table.table_no, len(eligible),
+                    )
+                    continue
+
+                async with get_table_lock(table.table_no):
+                    active_recheck = await get_active_hand(session, table.id)
+                    if active_recheck is not None:
+                        continue
+                    hand = await start_hand(session, table.id)
+                    if hand:
+                        logger.info(
+                            "Tournament start: hand #%d started at table %d (%d players)",
+                            hand.hand_no, table.table_no, len(eligible),
+                        )
+        except Exception:
+            logger.exception("Error starting hand at table %d on tournament start", table.table_no)
+
+
+async def tournament_start_loop() -> None:
+    """One-shot: sleep until TOURNAMENT_START_AT, then kick off all table hands."""
+    if settings.TOURNAMENT_START_AT is None:
+        return
+
+    now = datetime.now(timezone.utc)
+    start = settings.TOURNAMENT_START_AT
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+
+    if now < start:
+        wait_secs = (start - now).total_seconds()
+        logger.info(
+            "Tournament hand start scheduled in %.0fs (at %s KST)",
+            wait_secs, start.isoformat(),
+        )
+        await asyncio.sleep(wait_secs)
+
+    logger.info("Tournament start time reached — auto-starting all eligible tables")
+    try:
+        await _start_all_eligible_tables()
+    except Exception:
+        logger.exception("Error in tournament_start_loop")
 
 
 async def blind_escalation_loop() -> None:
