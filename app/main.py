@@ -25,6 +25,7 @@ from app.api.playground.api import router as playground_api_router
 from app.api.playground.views import router as playground_views_router
 from app.middleware.admin_auth import AdminAuthMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 
 @asynccontextmanager
@@ -69,6 +70,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(GZipMiddleware, minimum_size=500)
 app.add_middleware(AdminAuthMiddleware)
 app.add_middleware(RateLimitMiddleware)  # outermost: runs before AdminAuth
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
