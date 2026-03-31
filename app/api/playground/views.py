@@ -3,11 +3,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
+from app.core.templates import templates
+
 router = APIRouter(prefix="/playground", tags=["playground"])
-templates = Jinja2Templates(directory="app/templates")
 
 
 @router.get("/", response_class=HTMLResponse)

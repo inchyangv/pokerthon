@@ -5,7 +5,6 @@ import secrets
 
 from fastapi import APIRouter, Depends, Form, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,8 +19,9 @@ from app.models.table import SeatStatus, Table, TableSeat
 from app.services import chip_service, credential_service
 from app.services.history_service import get_hand_actions
 
+from app.core.templates import templates
+
 router = APIRouter(prefix="/admin", tags=["admin-ui"])
-templates = Jinja2Templates(directory="app/templates")
 
 _SESSION_COOKIE = "admin_session"
 # Server-side session store: token -> True

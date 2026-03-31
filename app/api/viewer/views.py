@@ -5,7 +5,6 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -31,8 +30,9 @@ def _fmt_ts(ts) -> str:
             return ts
     return str(ts)
 
+from app.core.templates import templates
+
 router = APIRouter(prefix="/viewer", tags=["viewer"])
-templates = Jinja2Templates(directory="app/templates")
 
 
 @router.get("/tables/{table_no}", response_class=HTMLResponse)
