@@ -182,7 +182,7 @@ async def leaderboard_page(
     if sort_by not in valid_sorts:
         sort_by = "chips"
 
-    items = await get_leaderboard(session, sort_by=sort_by, limit=200, include_bots=True)
+    items = await get_leaderboard(session, sort_by=sort_by, limit=200, include_bots=False)
     return templates.TemplateResponse(request, "viewer/leaderboard.html", {
         "items": items,
         "sort_by": sort_by,
