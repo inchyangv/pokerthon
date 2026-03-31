@@ -114,6 +114,9 @@ async def delete_table_endpoint(table_no: int, session: AsyncSession = Depends(g
         await delete_table(session, table_no)
     except LookupError as e:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": str(e)})
+    # Invalidate in-process caches so recreated tables resolve to the new table_id
+    from app.api.public.game_state import invalidate_table_id_cache, invalidate_state_cache
+    invalidate_table_id_cache(table_no)
 
 
 @router.post("/{table_no}/close", response_model=TableResponse)

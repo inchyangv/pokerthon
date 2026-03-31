@@ -78,3 +78,32 @@ async def get_ledger_endpoint(account_id: int, session: AsyncSession = Depends(g
     if not account:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Account not found"})
     return await get_ledger(session, account_id)
+
+
+@router.post("/{account_id}/reset-profit", response_model=AccountResponse)
+async def reset_profit(account_id: int, session: AsyncSession = Depends(get_session)):
+    """Admin: clear chip ledger and add a single ADMIN_GRANT equal to current balance.
+
+    After this call total_profit = wallet_balance - total_granted = 0.
+    """
+    from sqlalchemy import delete, select
+    from app.models.account import Account
+    from app.models.chip import ChipLedger, LedgerReasonType
+
+    result = await session.execute(select(Account).where(Account.id == account_id).with_for_update())
+    account = result.scalar_one_or_none()
+    if not account:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Account not found"})
+
+    await session.execute(delete(ChipLedger).where(ChipLedger.account_id == account_id))
+    baseline = ChipLedger(
+        account_id=account_id,
+        delta=account.wallet_balance,
+        balance_after=account.wallet_balance,
+        reason_type=LedgerReasonType.ADMIN_GRANT,
+        reason_text="reset_profit_baseline",
+    )
+    session.add(baseline)
+    await session.commit()
+    await session.refresh(account)
+    return account

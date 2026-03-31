@@ -219,6 +219,13 @@ def invalidate_state_cache(table_id: int) -> None:
     _state_cache.pop(table_id, None)
 
 
+def invalidate_table_id_cache(table_no: int) -> None:
+    """Clear table_no→table_id mapping (call when a table is deleted/recreated)."""
+    table_id = _table_id_cache.pop(table_no, None)
+    if table_id is not None:
+        _state_cache.pop(table_id, None)
+
+
 # ── SSE stream ───────────────────────────────────────────────────────────────
 
 _SSE_WAIT_MS = 30_000   # max wait per iteration before sending heartbeat
