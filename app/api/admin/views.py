@@ -428,6 +428,23 @@ async def tables_page(request: Request, session: AsyncSession = Depends(get_sess
     })
 
 
+@router.post("/tables/merge-form")
+async def merge_tables_ui(
+    request: Request,
+    src_table_no: int = Form(...),
+    dst_table_no: int = Form(...),
+    session: AsyncSession = Depends(get_session),
+):
+    if not _is_authenticated(request):
+        return _redirect_login()
+    from app.services.table_service import merge_tables
+    try:
+        await merge_tables(session, src_table_no, dst_table_no)
+    except Exception as e:
+        return RedirectResponse(url=f"/admin/tables?error={e}", status_code=302)
+    return RedirectResponse(url="/admin/tables", status_code=302)
+
+
 @router.post("/tables/create")
 async def create_table_ui(
     request: Request,

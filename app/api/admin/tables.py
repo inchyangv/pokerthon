@@ -19,6 +19,11 @@ class SetBlindsBody(BaseModel):
     small_blind: int
     big_blind: int
 
+
+class MergeTablesBody(BaseModel):
+    src_table_no: int
+    dst_table_no: int
+
 router = APIRouter(prefix="/admin/tables", tags=["admin-tables"])
 
 
@@ -146,3 +151,19 @@ async def set_blinds_endpoint(
     table.big_blind = body.big_blind
     await session.commit()
     return {"table_no": table_no, "small_blind": table.small_blind, "big_blind": table.big_blind}
+
+
+@router.post("/merge")
+async def merge_tables_endpoint(
+    body: MergeTablesBody,
+    session: AsyncSession = Depends(get_session),
+):
+    """Move all seated players from src_table_no to dst_table_no."""
+    from app.services.table_service import merge_tables
+    try:
+        result = await merge_tables(session, body.src_table_no, body.dst_table_no)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": str(e)})
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail={"code": "CONFLICT", "message": str(e)})
+    return result

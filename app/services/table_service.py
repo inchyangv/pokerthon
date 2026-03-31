@@ -95,6 +95,76 @@ async def close_table(session: AsyncSession, table_no: int) -> Table:
     return await _reload_with_seats(session, table.id)
 
 
+async def merge_tables(session: AsyncSession, src_table_no: int, dst_table_no: int) -> dict:
+    """Move all seated players from src table to dst table.
+
+    Rules:
+    - Both tables must exist and be OPEN or PAUSED
+    - Neither table may have an active hand in progress
+    - dst table must have enough empty seats for all src players
+    """
+    from app.models.hand import Hand, HandStatus
+
+    src_r = await session.execute(
+        select(Table).where(Table.table_no == src_table_no).options(selectinload(Table.seats))
+    )
+    src = src_r.scalar_one_or_none()
+    if not src:
+        raise LookupError(f"Source table {src_table_no} not found")
+
+    dst_r = await session.execute(
+        select(Table).where(Table.table_no == dst_table_no).options(selectinload(Table.seats))
+    )
+    dst = dst_r.scalar_one_or_none()
+    if not dst:
+        raise LookupError(f"Destination table {dst_table_no} not found")
+
+    if src.id == dst.id:
+        raise ValueError("Source and destination must be different tables")
+
+    # Block if either table has a hand in progress
+    for t in (src, dst):
+        hand_r = await session.execute(
+            select(Hand).where(Hand.table_id == t.id, Hand.status == HandStatus.IN_PROGRESS)
+        )
+        if hand_r.scalar_one_or_none():
+            raise ValueError(f"Table {t.table_no} has an active hand — cannot merge")
+
+    # Players to move
+    moving = [s for s in src.seats if s.seat_status != SeatStatus.EMPTY]
+    if not moving:
+        raise ValueError(f"Source table {src_table_no} has no seated players")
+
+    # Available seats at dst
+    free_seats = sorted(
+        [s for s in dst.seats if s.seat_status == SeatStatus.EMPTY],
+        key=lambda s: s.seat_no,
+    )
+    if len(free_seats) < len(moving):
+        raise ValueError(
+            f"Destination table {dst_table_no} only has {len(free_seats)} free seats "
+            f"but {len(moving)} players need to move"
+        )
+
+    # Move players
+    moved = []
+    for player_seat, target_seat in zip(moving, free_seats):
+        target_seat.account_id = player_seat.account_id
+        target_seat.seat_status = player_seat.seat_status
+        target_seat.stack = player_seat.stack
+        target_seat.joined_at = player_seat.joined_at
+
+        player_seat.account_id = None
+        player_seat.seat_status = SeatStatus.EMPTY
+        player_seat.stack = 0
+        player_seat.joined_at = None
+
+        moved.append({"from_seat": player_seat.seat_no, "to_seat": target_seat.seat_no})
+
+    await session.commit()
+    return {"moved": moved, "src_table_no": src_table_no, "dst_table_no": dst_table_no}
+
+
 async def delete_table(session: AsyncSession, table_no: int) -> None:
     """Hard-delete a table and all associated records.
 
