@@ -394,8 +394,15 @@
       document.getElementById('statusBar').textContent = '연결 오류 — 재시도 중...';
       retryDelay = Math.min(retryDelay * 2, 30000);
     }
-    setTimeout(poll, pollInterval);
+    // Slow down when tab is in background
+    const effectiveInterval = document.hidden ? 60000 : pollInterval;
+    setTimeout(poll, effectiveInterval);
   }
+
+  // Resume immediately when tab becomes visible
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) poll();
+  });
 
   poll();
 </script>
