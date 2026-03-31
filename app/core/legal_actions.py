@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import math
 
-from app.config import settings
 from app.models.hand import Hand, HandPlayer
 
 
-def get_legal_actions(hand: Hand, player: HandPlayer) -> list[dict]:
-    """Returns list of legal actions for the player."""
+def get_legal_actions(hand: Hand, player: HandPlayer, big_blind: int = 2) -> list[dict]:
+    """Returns list of legal actions for the player.
+
+    big_blind should be the current table big_blind (table.big_blind).
+    """
     if player.folded or player.all_in:
         return []
     if hand.action_seat_no != player.seat_no:
@@ -16,7 +18,7 @@ def get_legal_actions(hand: Hand, player: HandPlayer) -> list[dict]:
 
     stack = player.ending_stack
     to_call = max(0, hand.current_bet - player.round_contribution)
-    min_raise_to = math.ceil(hand.current_bet * 1.5) if hand.current_bet > 0 else settings.BIG_BLIND
+    min_raise_to = math.ceil(hand.current_bet * 1.5) if hand.current_bet > 0 else big_blind
     max_raise_to = stack + player.round_contribution  # total chips player could put in
 
     actions = []
@@ -35,10 +37,10 @@ def get_legal_actions(hand: Hand, player: HandPlayer) -> list[dict]:
 
     # BET_TO (only when no existing bet)
     if hand.current_bet == 0:
-        if stack >= settings.BIG_BLIND:
+        if stack >= big_blind:
             actions.append({
                 "type": "BET_TO",
-                "min": settings.BIG_BLIND,
+                "min": big_blind,
                 "max": stack,
             })
 

@@ -37,6 +37,8 @@ class Hand(Base):
     action_seat_no: Mapped[int | None] = mapped_column(Integer, nullable=True)
     action_deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deal_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    small_blind_amount: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    big_blind_amount: Mapped[int] = mapped_column(Integer, default=2, nullable=False)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

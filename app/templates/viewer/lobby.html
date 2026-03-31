@@ -4,6 +4,22 @@
 
 <h1>로비</h1>
 
+{% if blind_level.enabled %}
+<!-- Blind Level Banner -->
+<div class="blind-level-banner" id="blindBanner">
+  <span class="blind-level-num">Level {{ blind_level.level }}</span>
+  <span class="blind-level-blinds">SB/BB: {{ blind_level.small_blind }}/{{ blind_level.big_blind }}</span>
+  {% if blind_level.next_level_at %}
+  <span class="blind-level-next">
+    다음 레벨 ({{ blind_level.next_small_blind }}/{{ blind_level.next_big_blind }}) :
+    <span id="blindCountdown" data-until="{{ blind_level.next_level_at }}">계산 중…</span>
+  </span>
+  {% else %}
+  <span class="blind-level-next">최종 레벨</span>
+  {% endif %}
+</div>
+{% endif %}
+
 <!-- Stats Bar -->
 <div class="stats-bar" id="statsBar">
   <div class="stats-bar-item">
@@ -210,5 +226,24 @@
     }
   }
   loadMiniLeaderboard();
+
+  // ── Blind level countdown ────────────────────────────────────────────────
+  const cdEl = document.getElementById('blindCountdown');
+  if (cdEl) {
+    const until = new Date(cdEl.dataset.until);
+    function updateCountdown() {
+      const diff = until - Date.now();
+      if (diff <= 0) {
+        cdEl.textContent = '곧 변경';
+        return;
+      }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      cdEl.textContent = `${h}h ${m}m ${s}s`;
+    }
+    updateCountdown();
+    setInterval(updateCountdown, 1000);
+  }
 </script>
 {% endblock %}

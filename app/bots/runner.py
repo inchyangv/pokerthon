@@ -17,7 +17,7 @@ from app.core.table_lock import get_table_lock
 from app.database import async_session_factory
 from app.models.bot import BotProfile
 from app.models.hand import Hand, HandPlayer, HandStatus
-from app.models.table import SeatStatus, TableSeat
+from app.models.table import SeatStatus, Table, TableSeat
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +62,10 @@ async def _process_bot_turn(session: AsyncSession, bot_profile: BotProfile) -> N
     if hand is None:
         return  # No active hand
 
+    # Load table for big_blind (needed for legal action computation)
+    table_result_early = await session.execute(select(Table).where(Table.id == seat.table_id))
+    table_early = table_result_early.scalar_one()
+
     # Check it's the bot's turn
     if hand.action_seat_no != seat.seat_no:
         return
@@ -78,7 +82,7 @@ async def _process_bot_turn(session: AsyncSession, bot_profile: BotProfile) -> N
         return
 
     # Compute legal actions
-    raw_legal = get_legal_actions(hand, player)
+    raw_legal = get_legal_actions(hand, player, table_early.big_blind)
     if not raw_legal:
         return
 
@@ -127,10 +131,7 @@ async def _process_bot_turn(session: AsyncSession, bot_profile: BotProfile) -> N
     amount = decision.amount
 
     # Acquire per-table lock and submit action
-    # Load table_no for lock key
-    from app.models.table import Table
-    table_result = await session.execute(select(Table).where(Table.id == seat.table_id))
-    table = table_result.scalar_one()
+    table = table_early
 
     lock = get_table_lock(table.table_no)
     async with lock:

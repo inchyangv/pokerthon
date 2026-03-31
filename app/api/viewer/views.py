@@ -15,6 +15,7 @@ from app.database import get_session
 from app.models.hand import Hand, HandStatus
 from app.models.table import SeatStatus, Table
 from app.services.leaderboard_service import get_leaderboard
+from app.tasks.blind_escalation import get_blind_level_info
 
 
 def _fmt_ts(ts) -> str:
@@ -83,9 +84,12 @@ async def lobby(request: Request, session: AsyncSession = Depends(get_session)):
             "has_active_hand": active_hands.get(t.id, False),
         })
 
+    blind_level = get_blind_level_info()
+
     # Leaderboard rendered client-side via AJAX to avoid blocking page render
     return templates.TemplateResponse(request, "viewer/lobby.html", {
         "tables": tables_out,
+        "blind_level": blind_level,
     })
 
 

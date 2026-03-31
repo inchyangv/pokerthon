@@ -149,7 +149,7 @@ async def _build_state(
     max_raise_to: int | None = None
     if my_player and hand.action_seat_no == my_player.seat_no:
         to_call = max(0, hand.current_bet - my_player.round_contribution)
-        legal_actions = get_legal_actions(hand, my_player)
+        legal_actions = get_legal_actions(hand, my_player, table.big_blind)
         if hand.current_bet > 0:
             min_raise_to = math.ceil(hand.current_bet * 1.5)
             max_raise_to = my_player.ending_stack + my_player.round_contribution

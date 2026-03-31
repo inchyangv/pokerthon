@@ -727,3 +727,35 @@ h2 { font-size: 1.2rem; margin-bottom: .75rem; color: var(--text-muted); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 html { scrollbar-color: var(--border) var(--bg); }
+
+/* ── Blind Level Banner ── */
+.blind-level-banner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  background: linear-gradient(135deg, rgba(255,180,0,.15), rgba(255,120,0,.1));
+  border: 1px solid rgba(255,180,0,.4);
+  border-radius: 8px;
+  padding: .6rem 1rem;
+  margin-bottom: 1rem;
+  font-size: .9rem;
+}
+.blind-level-num {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--accent);
+}
+.blind-level-blinds {
+  font-weight: 600;
+  color: var(--text);
+}
+.blind-level-next {
+  color: var(--text-muted);
+  font-size: .85rem;
+}
+#blindCountdown {
+  color: var(--accent);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}

@@ -1,3 +1,4 @@
+from datetime import datetime
 from pydantic_settings import BaseSettings
 
 
@@ -10,6 +11,11 @@ class Settings(BaseSettings):
     TABLE_BUYIN: int = 40
     SMALL_BLIND: int = 1
     BIG_BLIND: int = 2
+
+    # Tournament blind escalation
+    # Set to ISO datetime string to enable auto escalation, e.g. "2026-04-01T10:00:00+09:00"
+    TOURNAMENT_START_AT: datetime | None = None
+    BLIND_LEVEL_HOURS: int = 48
 
     # Bot settings
     BOT_ENABLED: bool = True

@@ -148,6 +148,8 @@ async def start_hand(session: AsyncSession, table_id: int) -> Hand | None:
         street="preflop",
         board_json="[]",
         current_bet=table.big_blind,
+        small_blind_amount=table.small_blind,
+        big_blind_amount=table.big_blind,
     )
     session.add(hand)
     await session.flush()
