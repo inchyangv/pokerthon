@@ -16,8 +16,10 @@ from app.database import get_session
 from app.middleware.hmac_auth import require_hmac_auth
 from app.models.hand import Hand, HandStatus, HandPlayer, TableSnapshot
 from app.models.table import SeatStatus, Table, TableSeat
+from app.api.public.game_state import invalidate_state_cache
 from app.services.action_service import process_action
 from app.services.hand_service import get_active_hand
+from app.services.snapshot_service import fire_table_event
 
 router = APIRouter(prefix="/v1/private/tables", tags=["action"])
 
@@ -160,27 +162,38 @@ async def submit_action(
         # Refresh hand to get updated state after action
         await session.refresh(hand)
 
-        # Update (or create) the TableSnapshot and increment version
+        # Load current snapshot for version tracking
         snap_result = await session.execute(
             select(TableSnapshot).where(TableSnapshot.table_id == table.id)
         )
         snap = snap_result.scalar_one_or_none()
-        snapshot_data = {
-            "hand_id": hand.id,
-            "street": hand.street,
-            "action_seat_no": hand.action_seat_no,
-        }
-        if snap:
-            snap.version += 1
-            snap.snapshot_json = json.dumps(snapshot_data)
+
+        if hand.status == HandStatus.FINISHED:
+            # complete_hand() already bumped and committed the snapshot.
+            # Do NOT double-bump. Just read the version it set.
+            state_version = snap.version if snap else 0
         else:
-            snap = TableSnapshot(
-                table_id=table.id,
-                version=1,
-                snapshot_json=json.dumps(snapshot_data),
-            )
-            session.add(snap)
-        await session.commit()
+            # Mid-hand: bump snapshot version and notify viewers.
+            snapshot_data = {
+                "hand_id": hand.id,
+                "street": hand.street,
+                "action_seat_no": hand.action_seat_no,
+            }
+            if snap:
+                snap.version += 1
+                snap.snapshot_json = json.dumps(snapshot_data)
+            else:
+                snap = TableSnapshot(
+                    table_id=table.id,
+                    version=1,
+                    snapshot_json=json.dumps(snapshot_data),
+                )
+                session.add(snap)
+            await session.commit()
+            # Invalidate in-process cache and notify SSE/long-poll waiters AFTER commit.
+            invalidate_state_cache(table.id)
+            fire_table_event(table.id)
+            state_version = snap.version
 
         response: dict[str, Any] = {
             "action": {
@@ -190,7 +203,7 @@ async def submit_action(
                 "amount_to": action.amount_to,
                 "street": action.street,
             },
-            "state_version": snap.version,
+            "state_version": state_version,
         }
 
         if body.idempotency_key:

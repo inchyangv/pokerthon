@@ -12,12 +12,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.pot_calculator import calculate_pots
 from app.database import get_session
 from app.models.account import Account
-from app.models.hand import Hand, HandPlayer, HandStatus
+from app.models.hand import Hand, HandPlayer, HandStatus, TableSnapshot
 from app.models.table import SeatStatus, Table, TableSeat
 from app.schemas.game_state import PotView, SidePot, UncalledReturn
 from app.services.snapshot_service import get_snapshot_version
 
 router = APIRouter(prefix="/v1/public/tables", tags=["public-state"])
+
+# In-process caches — survive across requests within the same process
+_table_id_cache: dict[int, int] = {}           # table_no → table_id (permanent)
+_state_cache: dict[int, tuple[int, str]] = {}  # table_id → (version, state_json)
 
 
 class PublicSeatState(BaseModel):
@@ -47,24 +51,12 @@ class PublicGameState(BaseModel):
     state_version: int
 
 
-@router.get("/{table_no}/state", response_model=PublicGameState)
-async def get_public_game_state(
-    table_no: int,
-    since_version: int | None = Query(default=None),
-    session: AsyncSession = Depends(get_session),
-):
-    table_result = await session.execute(select(Table).where(Table.table_no == table_no))
-    table = table_result.scalar_one_or_none()
-    if not table:
-        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Table not found"})
-
-    state_version = await get_snapshot_version(session, table.id)
-
-    # Skip full query when nothing has changed
-    if since_version is not None and since_version == state_version:
-        return Response(status_code=304)
-
-    # Load seats
+async def _compute_state(
+    session: AsyncSession,
+    table: Table,
+    state_version: int,
+) -> PublicGameState:
+    """Build PublicGameState by running up to 4 DB queries."""
     seats_result = await session.execute(select(TableSeat).where(TableSeat.table_id == table.id))
     seats = list(seats_result.scalars().all())
 
@@ -75,7 +67,6 @@ async def get_public_game_state(
         for acc in acc_result.scalars().all():
             nickname_map[acc.id] = acc.nickname
 
-    # Active hand
     hand_result = await session.execute(
         select(Hand).where(Hand.table_id == table.id, Hand.status == HandStatus.IN_PROGRESS)
     )
@@ -111,7 +102,6 @@ async def get_public_game_state(
             state_version=state_version,
         )
 
-    # Hand in progress
     players_result = await session.execute(
         select(HandPlayer).where(HandPlayer.hand_id == hand.id)
     )
@@ -162,3 +152,50 @@ async def get_public_game_state(
         action_deadline_at=deadline_str,
         state_version=state_version,
     )
+
+
+@router.get("/{table_no}/state")
+async def get_public_game_state(
+    table_no: int,
+    since_version: int | None = Query(default=None),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    # 1. Resolve table_no → table_id (permanent in-process cache)
+    if table_no not in _table_id_cache:
+        table_result = await session.execute(select(Table).where(Table.table_no == table_no))
+        table = table_result.scalar_one_or_none()
+        if not table:
+            raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Table not found"})
+        _table_id_cache[table_no] = table.id
+        loaded_table: Table | None = table
+    else:
+        loaded_table = None  # lazy — only fetch if we need a full rebuild
+
+    table_id = _table_id_cache[table_no]
+
+    # 2. Get current snapshot version (1 DB query)
+    state_version = await get_snapshot_version(session, table_id)
+
+    # 3. 304 when client is already up-to-date
+    if since_version is not None and since_version == state_version:
+        return Response(status_code=304)
+
+    # 4. Serve from in-process cache when version matches
+    cached = _state_cache.get(table_id)
+    if cached and cached[0] == state_version:
+        return Response(content=cached[1], media_type="application/json")
+
+    # 5. Cache miss — run the remaining queries and build full state
+    if loaded_table is None:
+        table_result = await session.execute(select(Table).where(Table.table_no == table_no))
+        loaded_table = table_result.scalar_one_or_none()
+
+    state = await _compute_state(session, loaded_table, state_version)
+    state_json = state.model_dump_json()
+    _state_cache[table_id] = (state_version, state_json)
+    return Response(content=state_json, media_type="application/json")
+
+
+def invalidate_state_cache(table_id: int) -> None:
+    """Clear cached state for a table (call after committing state changes)."""
+    _state_cache.pop(table_id, None)

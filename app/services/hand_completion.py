@@ -14,7 +14,7 @@ from app.models.table import SeatStatus, Table, TableSeat, TableStatus
 from app.services.chip_service import apply_game_delta
 from app.services.hand_service import _log_action
 from app.services.leaderboard_service import invalidate_leaderboard_cache
-from app.services.snapshot_service import bump_snapshot
+from app.services.snapshot_service import bump_snapshot, fire_table_event
 
 
 
@@ -106,7 +106,7 @@ async def complete_hand(
             seat.seat_status = SeatStatus.EMPTY
             seat.account_id = None
 
-    # --- 3. Bump snapshot ---
+    # --- 3. Bump snapshot (version only; full state will be rebuilt on next read) ---
     await bump_snapshot(session, hand.table_id)
 
     # --- 4. Check remaining players ---
@@ -136,6 +136,11 @@ async def complete_hand(
         )
 
     await session.commit()
+
+    # Invalidate in-process state cache and notify SSE/long-poll waiters after commit.
+    from app.api.public.game_state import invalidate_state_cache
+    invalidate_state_cache(hand.table_id)
+    fire_table_event(hand.table_id)
 
     # --- 5. Schedule next hand (only when 2+ players remain) ---
     if table.status == TableStatus.OPEN and len(eligible_after) >= 2:

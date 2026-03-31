@@ -68,3 +68,13 @@ async def wait_for_change(table_id: int, current_version: int, wait_ms: int) -> 
         return True
     except asyncio.TimeoutError:
         return False
+
+
+def fire_table_event(table_id: int) -> None:
+    """Notify SSE/long-poll waiters that the table state has changed.
+
+    Call this AFTER session.commit() to avoid serving stale data.
+    """
+    event = get_table_event(table_id)
+    event.set()
+    _table_events[table_id] = asyncio.Event()
