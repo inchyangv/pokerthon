@@ -1,21 +1,23 @@
 """Public game state endpoint — no hole cards exposed."""
 from __future__ import annotations
 
+import asyncio
 import json
+from typing import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pot_calculator import calculate_pots
-from app.database import get_session
+from app.database import async_session_factory, get_session
 from app.models.account import Account
 from app.models.hand import Hand, HandPlayer, HandStatus, TableSnapshot
 from app.models.table import SeatStatus, Table, TableSeat
 from app.schemas.game_state import PotView, SidePot, UncalledReturn
-from app.services.snapshot_service import get_snapshot_version
+from app.services.snapshot_service import get_snapshot_version, wait_for_change
 
 router = APIRouter(prefix="/v1/public/tables", tags=["public-state"])
 
@@ -199,3 +201,87 @@ async def get_public_game_state(
 def invalidate_state_cache(table_id: int) -> None:
     """Clear cached state for a table (call after committing state changes)."""
     _state_cache.pop(table_id, None)
+
+
+# ── SSE stream ───────────────────────────────────────────────────────────────
+
+_SSE_WAIT_MS = 30_000   # max wait per iteration before sending heartbeat
+_SSE_HEADERS = {
+    "Cache-Control": "no-cache",
+    "X-Accel-Buffering": "no",  # disable nginx buffering
+}
+
+
+async def _state_event(table_id: int, table_no_hint: int) -> str | None:
+    """Return SSE 'state' event string, using cache when available."""
+    cached = _state_cache.get(table_id)
+    version = await get_snapshot_version_direct(table_id)
+    if cached and cached[0] == version:
+        state_json = cached[1]
+    else:
+        async with async_session_factory() as sess:
+            table_result = await sess.execute(
+                select(Table).where(Table.table_no == table_no_hint)
+            )
+            table = table_result.scalar_one_or_none()
+            if not table:
+                return None
+            state = await _compute_state(sess, table, version)
+            state_json = state.model_dump_json()
+            _state_cache[table_id] = (version, state_json)
+    return f"event: state\ndata: {state_json}\n\n"
+
+
+async def get_snapshot_version_direct(table_id: int) -> int:
+    """Read snapshot version using a fresh session (for use outside request context)."""
+    async with async_session_factory() as sess:
+        return await get_snapshot_version(sess, table_id)
+
+
+async def _sse_generator(table_id: int, table_no: int) -> AsyncIterator[str]:
+    """Yield SSE events for a live table."""
+    # Send current state immediately on connect
+    event = await _state_event(table_id, table_no)
+    if event:
+        yield event
+
+    current_version = await get_snapshot_version_direct(table_id)
+
+    while True:
+        changed = await wait_for_change(table_id, current_version, wait_ms=_SSE_WAIT_MS)
+        if not changed:
+            # Heartbeat keeps the connection alive through proxies
+            yield ": heartbeat\n\n"
+            continue
+
+        new_version = await get_snapshot_version_direct(table_id)
+        if new_version == current_version:
+            continue
+
+        current_version = new_version
+        event = await _state_event(table_id, table_no)
+        if event:
+            yield event
+
+
+@router.get("/{table_no}/stream")
+async def stream_table_state(
+    table_no: int,
+    session: AsyncSession = Depends(get_session),
+) -> StreamingResponse:
+    """Server-Sent Events endpoint — pushes state updates in real time."""
+    # Resolve table existence and cache table_id
+    if table_no not in _table_id_cache:
+        table_result = await session.execute(select(Table).where(Table.table_no == table_no))
+        table = table_result.scalar_one_or_none()
+        if not table:
+            raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Table not found"})
+        _table_id_cache[table_no] = table.id
+
+    table_id = _table_id_cache[table_no]
+
+    return StreamingResponse(
+        _sse_generator(table_id, table_no),
+        media_type="text/event-stream",
+        headers=_SSE_HEADERS,
+    )

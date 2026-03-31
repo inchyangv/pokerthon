@@ -85,6 +85,7 @@
   let showdownCards = {};   // seat_no -> [card1, card2]
   let lastActionSeq = -1;   // for incremental action feed updates
   let actionFeedHandId = null; // hand_id the feed currently shows
+  let usingSSE = false;     // true when EventSource is active
 
   const SUIT_SYMBOLS = { s: '♠', h: '♥', d: '♦', c: '♣' };
   const SUIT_CLASSES  = { s: 'spades', h: 'hearts', d: 'diamonds', c: 'clubs' };
@@ -338,15 +339,15 @@
   }
 
   async function poll() {
+    if (usingSSE) return; // SSE is active — no polling needed
     try {
       const url = `/v1/public/tables/${tableNo}/state` +
         (lastVersion >= 0 ? `?since_version=${lastVersion}` : '');
       const r = await fetch(url);
       if (r.status === 304) {
-        // Nothing changed — reschedule without re-rendering
         retryDelay = 1000;
         pollInterval = lastVersion >= 0 ? pollInterval : 2000;
-        setTimeout(poll, pollInterval);
+        setTimeout(poll, document.hidden ? 60000 : pollInterval);
         return;
       }
       if (!r.ok) {
@@ -355,84 +356,120 @@
         return;
       }
       const s = await r.json();
-
       if (s.state_version !== lastVersion) {
-        lastVersion = s.state_version;
-
-        const betEl = document.getElementById('currentBet');
-        betEl.dataset.raw = s.current_bet ?? 0;
-        betEl.textContent = formatChips(s.current_bet ?? 0);
-
-        updatePotDisplay(s.pot_view);
-        updateBoard(s.board || []);
-
-        const streetLabel = { preflop:'프리플랍', flop:'플랍', turn:'턴', river:'리버', showdown:'쇼다운' };
-        document.getElementById('street').textContent = streetLabel[s.street] || (s.street || '-');
-
-        // Timer
-        if (timerTick) clearInterval(timerTick);
-        if (s.action_deadline_at) {
-          deadlineMs = new Date(s.action_deadline_at).getTime();
-          tickTimer();
-          timerTick = setInterval(tickTimer, 1000);
-        } else {
-          deadlineMs = null;
-          const timerEl = document.getElementById('timer');
-          timerEl.textContent = '-';
-          timerEl.className = 'pill-value';
-        }
-
-        // V14: Detect hand transition for showdown cards
-        const curHandId = s.hand_id;
-        if (curHandId !== lastHandId) {
-          if (lastHandId && !curHandId) {
-            // Hand just finished — fetch hole cards
-            await fetchShowdownCards(lastHandId);
-          } else if (curHandId) {
-            // New hand started — clear showdown cards
-            showdownCards = {};
-          }
-          lastHandId = curHandId;
-        }
-
-        // V8: Idle message
-        const idleMsg = document.getElementById('idleMsg');
-        if (!s.street) {
-          idleMsg.style.display = '';
-        } else {
-          idleMsg.style.display = 'none';
-        }
-
-        updateSeats(
-          s.seats || [],
-          s.button_seat_no,
-          s.action_seat_no,
-          s.small_blind_seat_no,
-          s.big_blind_seat_no,
-          s.current_bet ?? 0,
-        );
-        await fetchActions(false);
+        applyState(s);
+      } else {
+        document.getElementById('statusBar').textContent =
+          `v${s.state_version} · ${s.street || '대기'} · ${new Date().toLocaleTimeString('ko-KR')}`;
       }
-
-      document.getElementById('statusBar').textContent =
-        `v${s.state_version} · ${s.street || '대기'} · ${new Date().toLocaleTimeString('ko-KR')}`;
-
       pollInterval = s.street ? 2000 : 10000;
       retryDelay = 1000;
     } catch(e) {
       document.getElementById('statusBar').textContent = '연결 오류 — 재시도 중...';
       retryDelay = Math.min(retryDelay * 2, 30000);
     }
-    // Slow down when tab is in background
-    const effectiveInterval = document.hidden ? 60000 : pollInterval;
-    setTimeout(poll, effectiveInterval);
+    setTimeout(poll, document.hidden ? 60000 : pollInterval);
+  }
+
+  // ── SSE (primary) ─────────────────────────────────────────────────────────
+  function startSSE() {
+    if (!window.EventSource) { startPolling(); return; }
+
+    const es = new EventSource(`/v1/public/tables/${tableNo}/stream`);
+    usingSSE = true;
+
+    es.addEventListener('state', (e) => {
+      try {
+        applyState(JSON.parse(e.data));
+      } catch(_) {}
+    });
+
+    es.onerror = () => {
+      es.close();
+      usingSSE = false;
+      // Fall back to polling after a short delay
+      setTimeout(startPolling, 2000);
+    };
+
+    // Slow heartbeat poll while SSE is live — keeps action feed fresh
+    // and recovers if SSE silently stalls.
+    setInterval(() => {
+      if (!usingSSE || document.hidden) return;
+      fetchActions(false);
+    }, 3000);
+  }
+
+  // ── Polling fallback ───────────────────────────────────────────────────────
+  function startPolling() {
+    usingSSE = false;
+    poll();
+  }
+
+  function applyState(s) {
+    if (s.state_version !== undefined && s.state_version <= lastVersion && lastVersion !== -1) return;
+    if (s.state_version !== undefined) lastVersion = s.state_version;
+
+    const betEl = document.getElementById('currentBet');
+    betEl.dataset.raw = s.current_bet ?? 0;
+    betEl.textContent = formatChips(s.current_bet ?? 0);
+
+    updatePotDisplay(s.pot_view);
+    updateBoard(s.board || []);
+
+    const streetLabel = { preflop:'프리플랍', flop:'플랍', turn:'턴', river:'리버', showdown:'쇼다운' };
+    document.getElementById('street').textContent = streetLabel[s.street] || (s.street || '-');
+
+    if (timerTick) clearInterval(timerTick);
+    if (s.action_deadline_at) {
+      deadlineMs = new Date(s.action_deadline_at).getTime();
+      tickTimer();
+      timerTick = setInterval(tickTimer, 1000);
+    } else {
+      deadlineMs = null;
+      const timerEl = document.getElementById('timer');
+      timerEl.textContent = '-';
+      timerEl.className = 'pill-value';
+    }
+
+    const curHandId = s.hand_id;
+    if (curHandId !== lastHandId) {
+      if (lastHandId && !curHandId) {
+        fetchShowdownCards(lastHandId);
+      } else if (curHandId) {
+        showdownCards = {};
+      }
+      lastHandId = curHandId;
+    }
+
+    const idleMsg = document.getElementById('idleMsg');
+    idleMsg.style.display = s.street ? 'none' : '';
+
+    updateSeats(
+      s.seats || [],
+      s.button_seat_no,
+      s.action_seat_no,
+      s.small_blind_seat_no,
+      s.big_blind_seat_no,
+      s.current_bet ?? 0,
+    );
+    fetchActions(false);
+
+    document.getElementById('statusBar').textContent =
+      `v${s.state_version} · ${s.street || '대기'} · ${new Date().toLocaleTimeString('ko-KR')}`;
   }
 
   // Resume immediately when tab becomes visible
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) poll();
+    if (!document.hidden) {
+      if (usingSSE) {
+        fetchActions(false);
+      } else {
+        poll();
+      }
+    }
   });
 
-  poll();
+  // Start with SSE; polling is the fallback
+  startSSE();
 </script>
 {% endblock %}
