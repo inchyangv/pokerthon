@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
@@ -12,6 +13,11 @@ from app.services.table_service import (
     pause_table,
     resume_table,
 )
+
+
+class SetBlindsBody(BaseModel):
+    small_blind: int
+    big_blind: int
 
 router = APIRouter(prefix="/admin/tables", tags=["admin-tables"])
 
@@ -109,3 +115,34 @@ async def close_table_endpoint(table_no: int, session: AsyncSession = Depends(ge
     except ValueError as e:
         raise HTTPException(status_code=409, detail={"code": "CONFLICT", "message": str(e)})
     return table
+
+
+@router.post("/{table_no}/set-blinds")
+async def set_blinds_endpoint(
+    table_no: int,
+    body: SetBlindsBody,
+    session: AsyncSession = Depends(get_session),
+):
+    """Update small/big blind for the table. Takes effect on the next hand."""
+    from sqlalchemy import select
+    from app.models.table import Table
+    from app.services.hand_service import get_active_hand
+
+    if body.small_blind <= 0 or body.big_blind <= 0:
+        raise HTTPException(status_code=422, detail={"code": "INVALID", "message": "Blinds must be positive"})
+    if body.big_blind < body.small_blind:
+        raise HTTPException(status_code=422, detail={"code": "INVALID", "message": "big_blind must be >= small_blind"})
+
+    table_r = await session.execute(select(Table).where(Table.table_no == table_no))
+    table = table_r.scalar_one_or_none()
+    if not table:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Table not found"})
+
+    active = await get_active_hand(session, table.id)
+    if active:
+        raise HTTPException(status_code=409, detail={"code": "HAND_IN_PROGRESS", "message": "Cannot change blinds mid-hand"})
+
+    table.small_blind = body.small_blind
+    table.big_blind = body.big_blind
+    await session.commit()
+    return {"table_no": table_no, "small_blind": table.small_blind, "big_blind": table.big_blind}

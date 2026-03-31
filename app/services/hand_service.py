@@ -147,7 +147,7 @@ async def start_hand(session: AsyncSession, table_id: int) -> Hand | None:
         big_blind_seat_no=bb_seat_no,
         street="preflop",
         board_json="[]",
-        current_bet=settings.BIG_BLIND,
+        current_bet=table.big_blind,
     )
     session.add(hand)
     await session.flush()
@@ -175,7 +175,7 @@ async def start_hand(session: AsyncSession, table_id: int) -> Hand | None:
     # Post blinds
     sb_hp = players[sb_seat_no]
     sb_seat = seat_map[sb_seat_no]
-    sb_amount = min(settings.SMALL_BLIND, sb_seat.stack)
+    sb_amount = min(table.small_blind, sb_seat.stack)
     sb_seat.stack -= sb_amount
     sb_hp.round_contribution += sb_amount
     sb_hp.hand_contribution += sb_amount
@@ -187,7 +187,7 @@ async def start_hand(session: AsyncSession, table_id: int) -> Hand | None:
 
     bb_hp = players[bb_seat_no]
     bb_seat = seat_map[bb_seat_no]
-    bb_amount = min(settings.BIG_BLIND, bb_seat.stack)
+    bb_amount = min(table.big_blind, bb_seat.stack)
     bb_seat.stack -= bb_amount
     bb_hp.round_contribution += bb_amount
     bb_hp.hand_contribution += bb_amount

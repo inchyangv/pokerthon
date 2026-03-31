@@ -488,6 +488,31 @@ async def close_table_ui(
     return RedirectResponse(url=f"/admin/tables/{table_no}", status_code=302)
 
 
+@router.post("/tables/{table_no}/set-blinds-form")
+async def set_blinds_ui(
+    request: Request,
+    table_no: int,
+    small_blind: int = Form(...),
+    big_blind: int = Form(...),
+    session: AsyncSession = Depends(get_session),
+):
+    if not _is_authenticated(request):
+        return _redirect_login()
+    from sqlalchemy import select
+    from app.models.table import Table
+    from app.services.hand_service import get_active_hand
+
+    table_r = await session.execute(select(Table).where(Table.table_no == table_no))
+    table = table_r.scalar_one_or_none()
+    if table and small_blind > 0 and big_blind >= small_blind:
+        active = await get_active_hand(session, table.id)
+        if not active:
+            table.small_blind = small_blind
+            table.big_blind = big_blind
+            await session.commit()
+    return RedirectResponse(url=f"/admin/tables/{table_no}", status_code=302)
+
+
 @router.post("/tables/{table_no}/start-hand-form")
 async def start_hand_ui(
     request: Request, table_no: int, session: AsyncSession = Depends(get_session)

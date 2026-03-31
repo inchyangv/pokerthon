@@ -15,6 +15,15 @@
       <p><strong>상태:</strong> <span class="badge badge-{{ table.status.lower() }}">{{ table.status }}</span></p>
       <p><strong>블라인드:</strong> {{ table.small_blind }} / {{ table.big_blind }}</p>
       <p><strong>바이인:</strong> {{ table.buy_in }}</p>
+      {% if not current_hand %}
+      <form method="post" action="/admin/tables/{{ table.table_no }}/set-blinds-form" style="display:flex;gap:0.4rem;align-items:center;margin-bottom:0.5rem;">
+        <label style="font-size:0.85rem;">SB</label>
+        <input type="number" name="small_blind" value="{{ table.small_blind }}" min="1" style="width:60px;padding:2px 4px;">
+        <label style="font-size:0.85rem;">BB</label>
+        <input type="number" name="big_blind" value="{{ table.big_blind }}" min="1" style="width:60px;padding:2px 4px;">
+        <button type="submit" class="btn btn-sm" style="background:#8e44ad;color:#fff;">블라인드 변경</button>
+      </form>
+      {% endif %}
       <div style="display:flex;gap:0.5rem;margin-top:0.5rem;flex-wrap:wrap;">
         {% if table.status == 'OPEN' %}
           {% if not current_hand %}
