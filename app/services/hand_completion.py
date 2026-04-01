@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.hand import Hand, HandPlayer, HandResult, HandStatus
 from app.models.table import SeatStatus, Table, TableSeat, TableStatus
@@ -15,6 +17,8 @@ from app.services.chip_service import apply_game_delta
 from app.services.hand_service import _log_action
 from app.services.leaderboard_service import invalidate_leaderboard_cache
 from app.services.snapshot_service import bump_snapshot, fire_table_event
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -79,6 +83,8 @@ async def complete_hand(
 
     player_map = {p.seat_no: p for p in players}
 
+    busted_players: list[dict] = []  # players eliminated this hand (stack → 0)
+
     for seat_no, seat in seat_map.items():
         if seat.account_id is None:
             continue
@@ -96,6 +102,7 @@ async def complete_hand(
 
         # Stack-0 auto-evict (no cashout needed; wallet already updated above)
         if seat.stack == 0 and seat.seat_status in (SeatStatus.SEATED, SeatStatus.LEAVING_AFTER_HAND):
+            busted_players.append({"account_id": seat.account_id, "seat_no": seat_no})
             seat.seat_status = SeatStatus.EMPTY
             seat.account_id = None
             continue
@@ -109,7 +116,7 @@ async def complete_hand(
     # --- 3. Bump snapshot (version only; full state will be rebuilt on next read) ---
     await bump_snapshot(session, hand.table_id)
 
-    # --- 4. Check remaining players ---
+    # --- 4. Check remaining players & auto-consolidation ---
     seats_after_q = await session.execute(
         select(TableSeat).where(TableSeat.table_id == hand.table_id)
     )
@@ -119,8 +126,48 @@ async def complete_hand(
         and s.stack > 0
     ]
 
-    # Tournament winner: exactly 1 player remaining at this table
-    if len(eligible_after) == 1:
+    # Check if tables can be consolidated (e.g. 2 tables → 1 when total ≤ 9)
+    needs_consolidation = False
+    all_active_tables: list[Table] = []
+
+    all_tables_r = await session.execute(
+        select(Table)
+        .where(Table.status.in_([TableStatus.OPEN, TableStatus.PAUSED]))
+        .options(selectinload(Table.seats))
+    )
+    all_active_tables = list(all_tables_r.scalars().all())
+
+    if len(all_active_tables) >= 2:
+        total_survivors = sum(
+            1 for t in all_active_tables for s in t.seats
+            if s.seat_status in (SeatStatus.SEATED, SeatStatus.LEAVING_AFTER_HAND)
+            and s.stack > 0
+        )
+        max_seats = table.max_seats  # 9
+        tables_needed = max(1, -(-total_survivors // max_seats))  # ceil division
+
+        if tables_needed < len(all_active_tables) and total_survivors > 1:
+            needs_consolidation = True
+            # Pause all tables to prevent new hands while consolidating
+            for t in all_active_tables:
+                if t.status == TableStatus.OPEN:
+                    t.status = TableStatus.PAUSED
+
+    # Tournament winner: exactly 1 player remaining across ALL tables
+    if not needs_consolidation and len(eligible_after) == 1 and len(all_active_tables) <= 1:
+        # Runner-up: player(s) who busted in this final hand
+        for bp in busted_players:
+            await _log_action(
+                session, hand.id, "TOURNAMENT_RUNNER_UP", None,
+                actor_account_id=bp["account_id"],
+                actor_seat_no=bp["seat_no"],
+                is_system=True,
+            )
+            logger.info(
+                "TOURNAMENT_RUNNER_UP: table=%d seat=%d account=%d",
+                table.table_no, bp["seat_no"], bp["account_id"],
+            )
+
         winner_seat = eligible_after[0]
         await _log_action(
             session, hand.id, "TOURNAMENT_WINNER", None,
@@ -129,8 +176,7 @@ async def complete_hand(
             is_system=True,
         )
         table.status = TableStatus.PAUSED
-        import logging
-        logging.getLogger(__name__).info(
+        logger.info(
             "TOURNAMENT_WINNER: table=%d seat=%d account=%d",
             table.table_no, winner_seat.seat_no, winner_seat.account_id,
         )
@@ -141,6 +187,19 @@ async def complete_hand(
     from app.api.public.game_state import invalidate_state_cache
     invalidate_state_cache(hand.table_id)
     fire_table_event(hand.table_id)
+
+    if needs_consolidation:
+        # Notify all table clients about the pause
+        for t in all_active_tables:
+            if t.id != hand.table_id:
+                invalidate_state_cache(t.id)
+                fire_table_event(t.id)
+        logger.info(
+            "Auto-consolidate triggered: %d survivors across %d tables (need %d table(s))",
+            total_survivors, len(all_active_tables), tables_needed,
+        )
+        asyncio.ensure_future(_auto_consolidate())
+        return
 
     # --- 5. Schedule next hand (only when 2+ players remain) ---
     if table.status == TableStatus.OPEN and len(eligible_after) >= 2:
@@ -181,3 +240,95 @@ async def _delayed_next_hand(table_id: int) -> None:
 
         async with get_table_lock(table.table_no):
             await start_hand(session, table_id)
+
+
+async def _auto_consolidate() -> None:
+    """Background: wait for active hands to finish, then merge tables into fewer."""
+    from app.database import async_session_factory
+    from app.services.table_service import merge_tables
+    from app.core.table_lock import get_table_lock
+
+    # Wait for all in-progress hands to finish (max ~60s)
+    for _ in range(60):
+        await asyncio.sleep(1)
+        async with async_session_factory() as session:
+            active_r = await session.execute(
+                select(Hand)
+                .join(Table, Hand.table_id == Table.id)
+                .where(
+                    Hand.status == HandStatus.IN_PROGRESS,
+                    Table.status.in_([TableStatus.OPEN, TableStatus.PAUSED]),
+                )
+            )
+            if not active_r.scalars().first():
+                break
+    else:
+        logger.error("Auto-consolidate: timed out waiting for active hands to finish")
+        return
+
+    async with async_session_factory() as session:
+        # Re-query paused tables with seats
+        tables_r = await session.execute(
+            select(Table)
+            .where(Table.status == TableStatus.PAUSED)
+            .options(selectinload(Table.seats))
+        )
+        paused_tables = list(tables_r.scalars().all())
+
+        if len(paused_tables) < 2:
+            logger.info("Auto-consolidate: fewer than 2 paused tables, skipping")
+            return
+
+        # Pick destination = table with most seated players
+        def _player_count(t: Table) -> int:
+            return sum(
+                1 for s in t.seats
+                if s.seat_status != SeatStatus.EMPTY and s.stack > 0
+            )
+
+        paused_tables.sort(key=_player_count, reverse=True)
+        dst_table = paused_tables[0]
+        src_tables = [t for t in paused_tables[1:] if _player_count(t) > 0]
+
+        if not src_tables:
+            logger.info("Auto-consolidate: no source tables with players, skipping")
+            return
+
+        # Merge each source into destination
+        for src in src_tables:
+            try:
+                result = await merge_tables(session, src.table_no, dst_table.table_no)
+                logger.info(
+                    "Auto-consolidate: merged table %d → %d (%s)",
+                    src.table_no, dst_table.table_no, result,
+                )
+            except Exception:
+                logger.exception("Auto-consolidate: merge table %d → %d failed", src.table_no, dst_table.table_no)
+                return
+
+        # Close empty source tables, open destination
+        for src in src_tables:
+            src_r = await session.execute(select(Table).where(Table.id == src.id))
+            s = src_r.scalar_one()
+            s.status = TableStatus.CLOSED
+
+        dst_r = await session.execute(select(Table).where(Table.id == dst_table.id))
+        dst = dst_r.scalar_one()
+        dst.status = TableStatus.OPEN
+        await session.commit()
+
+        # Bump snapshot & notify clients
+        await bump_snapshot(session, dst.id)
+        await session.commit()
+
+        from app.api.public.game_state import invalidate_state_cache
+        invalidate_state_cache(dst.id)
+        fire_table_event(dst.id)
+        for src in src_tables:
+            invalidate_state_cache(src.id)
+            fire_table_event(src.id)
+
+        logger.info("Auto-consolidate: table %d now OPEN with all players", dst.table_no)
+
+    # Schedule next hand on consolidated table
+    asyncio.ensure_future(_delayed_next_hand(dst_table.id))

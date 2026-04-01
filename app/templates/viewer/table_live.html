@@ -70,6 +70,22 @@
   </div>
 </div>
 
+<!-- Tournament Result Overlay -->
+<div class="tournament-overlay" id="tournamentOverlay">
+  <div class="tournament-modal">
+    <div class="confetti-container" id="confettiContainer"></div>
+    <div class="trophy-glow"></div>
+    <div class="trophy-icon">&#x1F3C6;</div>
+    <div class="tournament-title">TOURNAMENT CHAMPION</div>
+    <div class="winner-name" id="winnerName"></div>
+    <div class="runner-up-section" id="runnerUpSection" style="display:none;">
+      <div class="runner-up-label">2nd Place</div>
+      <div class="runner-up-name" id="runnerUpName"></div>
+    </div>
+    <button class="tournament-close-btn" onclick="closeTournamentOverlay()">닫기</button>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -227,7 +243,10 @@
     DEAL_FLOP:     '플랍 오픈',
     DEAL_TURN:     '턴 오픈',
     DEAL_RIVER:    '리버 오픈',
+    TOURNAMENT_WINNER:    null,   // handled separately
+    TOURNAMENT_RUNNER_UP: null,   // handled separately
   };
+  let tournamentShown = false;
   const RANK_KR = {
     'Royal Flush':'로열 플러시','Straight Flush':'스트레이트 플러시',
     'Four of a Kind':'포카드','Full House':'풀하우스','Flush':'플러시',
@@ -247,6 +266,16 @@
   }
 
   function formatAction(a) {
+    // TOURNAMENT_WINNER
+    if (a.action_type === 'TOURNAMENT_WINNER') {
+      const name = seatLabel(a.actor_seat, a.actor_nickname);
+      return { text: `🏆 토너먼트 우승: ${name}`, cls: 'action-tournament-winner' };
+    }
+    // TOURNAMENT_RUNNER_UP
+    if (a.action_type === 'TOURNAMENT_RUNNER_UP') {
+      const name = seatLabel(a.actor_seat, a.actor_nickname);
+      return { text: `🥈 준우승: ${name}`, cls: 'action-tournament-runner-up' };
+    }
     // SHOWDOWN — cards + hand ranking
     if (a.action_type === 'SHOWDOWN' && a.payload?.players) {
       const details = a.payload.players.map(p => {
@@ -266,7 +295,8 @@
     }
     // Other system actions
     if (a.is_system_action) {
-      return { text: SYSTEM_MAP[a.action_type] || a.action_type, cls: 'action-system-event' };
+      const mapped = SYSTEM_MAP[a.action_type];
+      return { text: mapped || a.action_type, cls: 'action-system-event' };
     }
     // Player actions
     const info = ACTION_MAP[a.action_type] || { label: a.action_type, cls: '' };
@@ -326,7 +356,53 @@
       if (seqs.length) lastActionSeq = Math.max(...seqs);
 
       if (wasAtBottom) feed.scrollTop = feed.scrollHeight;
+
+      // Detect tournament result and show celebration overlay
+      if (!tournamentShown) {
+        const winnerAction = data.actions.find(a => a.action_type === 'TOURNAMENT_WINNER');
+        const runnerUpActions = data.actions.filter(a => a.action_type === 'TOURNAMENT_RUNNER_UP');
+        if (winnerAction) {
+          const winnerName = winnerAction.actor_nickname || seatNickMap[winnerAction.actor_seat] || `${winnerAction.actor_seat}번 좌석`;
+          const runnerUpNames = runnerUpActions.map(a =>
+            a.actor_nickname || seatNickMap[a.actor_seat] || `${a.actor_seat}번 좌석`
+          );
+          showTournamentOverlay(winnerName, runnerUpNames);
+        }
+      }
     } catch(e) {}
+  }
+
+  function showTournamentOverlay(winner, runnerUps) {
+    tournamentShown = true;
+    document.getElementById('winnerName').textContent = winner;
+    if (runnerUps && runnerUps.length > 0) {
+      document.getElementById('runnerUpName').textContent = runnerUps.join(', ');
+      document.getElementById('runnerUpSection').style.display = '';
+    }
+    const overlay = document.getElementById('tournamentOverlay');
+    overlay.classList.add('visible');
+    spawnConfetti();
+  }
+
+  function closeTournamentOverlay() {
+    document.getElementById('tournamentOverlay').classList.remove('visible');
+  }
+
+  function spawnConfetti() {
+    const container = document.getElementById('confettiContainer');
+    const colors = ['#ffd700', '#ff6b6b', '#4caf50', '#64b5f6', '#ff8a65', '#ba68c8', '#fff176'];
+    for (let i = 0; i < 80; i++) {
+      const el = document.createElement('div');
+      el.className = 'confetti-piece';
+      el.style.left = Math.random() * 100 + '%';
+      el.style.animationDelay = (Math.random() * 2.5) + 's';
+      el.style.animationDuration = (2 + Math.random() * 3) + 's';
+      el.style.background = colors[Math.floor(Math.random() * colors.length)];
+      el.style.width = (4 + Math.random() * 6) + 'px';
+      el.style.height = (8 + Math.random() * 12) + 'px';
+      el.style.transform = `rotate(${Math.random() * 360}deg)`;
+      container.appendChild(el);
+    }
   }
 
   function tickTimer() {
