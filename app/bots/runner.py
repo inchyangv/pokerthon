@@ -230,7 +230,7 @@ async def _auto_start_hands() -> None:
 
 async def _refill_and_reseat_bots() -> None:
     """Refill chips and reseat any active bot that is no longer seated."""
-    if not settings.BOT_AUTO_RESEAT:
+    if not settings.BOT_AUTO_RESEAT or settings.TOURNAMENT_MODE:
         return
 
     from app.models.account import Account

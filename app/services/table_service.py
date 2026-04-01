@@ -130,8 +130,8 @@ async def merge_tables(session: AsyncSession, src_table_no: int, dst_table_no: i
         if hand_r.scalar_one_or_none():
             raise ValueError(f"Table {t.table_no} has an active hand — cannot merge")
 
-    # Players to move
-    moving = [s for s in src.seats if s.seat_status != SeatStatus.EMPTY]
+    # Players to move (only SEATED; skip LEAVING_AFTER_HAND — they chose to leave)
+    moving = [s for s in src.seats if s.seat_status == SeatStatus.SEATED]
     if not moving:
         raise ValueError(f"Source table {src_table_no} has no seated players")
 

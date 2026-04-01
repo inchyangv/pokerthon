@@ -20,6 +20,9 @@ from app.services.snapshot_service import bump_snapshot, fire_table_event
 
 logger = logging.getLogger(__name__)
 
+# Guard against multiple concurrent consolidation tasks
+_consolidation_in_progress = False
+
 
 
 async def complete_hand(
@@ -146,7 +149,7 @@ async def complete_hand(
         max_seats = table.max_seats  # 9
         tables_needed = max(1, -(-total_survivors // max_seats))  # ceil division
 
-        if tables_needed < len(all_active_tables) and total_survivors > 1:
+        if tables_needed < len(all_active_tables) and total_survivors > 1 and not _consolidation_in_progress:
             needs_consolidation = True
             # Pause all tables to prevent new hands while consolidating
             for t in all_active_tables:
@@ -244,9 +247,17 @@ async def _delayed_next_hand(table_id: int) -> None:
 
 async def _auto_consolidate() -> None:
     """Background: wait for active hands to finish, then merge tables into fewer."""
+    global _consolidation_in_progress
+    _consolidation_in_progress = True
+    try:
+        await _run_consolidation()
+    finally:
+        _consolidation_in_progress = False
+
+
+async def _run_consolidation() -> None:
     from app.database import async_session_factory
     from app.services.table_service import merge_tables
-    from app.core.table_lock import get_table_lock
 
     # Wait for all in-progress hands to finish (max ~60s)
     for _ in range(60):
@@ -266,6 +277,8 @@ async def _auto_consolidate() -> None:
         logger.error("Auto-consolidate: timed out waiting for active hands to finish")
         return
 
+    dst_table_id: int | None = None
+
     async with async_session_factory() as session:
         # Re-query paused tables with seats
         tables_r = await session.execute(
@@ -283,11 +296,12 @@ async def _auto_consolidate() -> None:
         def _player_count(t: Table) -> int:
             return sum(
                 1 for s in t.seats
-                if s.seat_status != SeatStatus.EMPTY and s.stack > 0
+                if s.seat_status == SeatStatus.SEATED and s.stack > 0
             )
 
         paused_tables.sort(key=_player_count, reverse=True)
         dst_table = paused_tables[0]
+        dst_table_id = dst_table.id
         src_tables = [t for t in paused_tables[1:] if _player_count(t) > 0]
 
         if not src_tables:
@@ -331,4 +345,5 @@ async def _auto_consolidate() -> None:
         logger.info("Auto-consolidate: table %d now OPEN with all players", dst.table_no)
 
     # Schedule next hand on consolidated table
-    asyncio.ensure_future(_delayed_next_hand(dst_table.id))
+    if dst_table_id:
+        asyncio.ensure_future(_delayed_next_hand(dst_table_id))
