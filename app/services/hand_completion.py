@@ -264,16 +264,18 @@ async def _auto_consolidate() -> None:
 
 
 async def _unpause_all_tables() -> None:
-    """Restore all PAUSED tables to OPEN — safety net for failed consolidation."""
+    """Restore all PAUSED tables to OPEN and restart hands — safety net for failed consolidation."""
     from app.database import async_session_factory
     from app.api.public.game_state import invalidate_state_cache
 
+    table_ids: list[int] = []
     async with async_session_factory() as session:
         tables_r = await session.execute(
             select(Table).where(Table.status == TableStatus.PAUSED)
         )
         for t in tables_r.scalars().all():
             t.status = TableStatus.OPEN
+            table_ids.append(t.id)
             logger.info("Auto-consolidate recovery: unpaused table %d", t.table_no)
         await session.commit()
         # Re-query to notify clients
@@ -284,13 +286,19 @@ async def _unpause_all_tables() -> None:
             invalidate_state_cache(t.id)
             fire_table_event(t.id)
 
+    # Schedule next hand on recovered tables so they don't sit idle
+    for tid in table_ids:
+        asyncio.ensure_future(_delayed_next_hand(tid))
+
 
 async def _run_consolidation() -> None:
     from app.database import async_session_factory
     from app.services.table_service import merge_tables
 
-    # Wait for all in-progress hands to finish (max ~60s)
-    for _ in range(60):
+    # Wait for all in-progress hands to finish.
+    # Timeout must exceed worst-case hand duration: up to 9 players × 4 streets
+    # × ACTION_TIMEOUT_SECONDS per action. Use 2 hours (7200s) to be safe.
+    for _ in range(7200):
         await asyncio.sleep(1)
         async with async_session_factory() as session:
             active_r = await session.execute(
