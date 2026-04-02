@@ -126,9 +126,15 @@ async def _auto_fold(session, hand: Hand, account_id: int) -> None:
             from app.services.hand_completion import complete_hand
             result = await resolve_showdown(session, hand)
             await complete_hand(session, hand, result)
-            return
+            return  # complete_hand already bumped snapshot and notified
 
+    # Bump snapshot and notify clients so UI updates after auto-fold
+    from app.services.snapshot_service import bump_snapshot, fire_table_event
+    from app.api.public.game_state import invalidate_state_cache
+    await bump_snapshot(session, hand.table_id)
     await session.commit()
+    invalidate_state_cache(hand.table_id)
+    fire_table_event(hand.table_id)
 
 
 async def timeout_checker_loop() -> None:
