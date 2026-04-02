@@ -255,6 +255,28 @@ async def _auto_consolidate() -> None:
         _consolidation_in_progress = False
 
 
+async def _unpause_all_tables() -> None:
+    """Restore all PAUSED tables to OPEN — safety net for failed consolidation."""
+    from app.database import async_session_factory
+    from app.api.public.game_state import invalidate_state_cache
+
+    async with async_session_factory() as session:
+        tables_r = await session.execute(
+            select(Table).where(Table.status == TableStatus.PAUSED)
+        )
+        for t in tables_r.scalars().all():
+            t.status = TableStatus.OPEN
+            logger.info("Auto-consolidate recovery: unpaused table %d", t.table_no)
+        await session.commit()
+        # Re-query to notify clients
+        tables_r2 = await session.execute(
+            select(Table).where(Table.status == TableStatus.OPEN)
+        )
+        for t in tables_r2.scalars().all():
+            invalidate_state_cache(t.id)
+            fire_table_event(t.id)
+
+
 async def _run_consolidation() -> None:
     from app.database import async_session_factory
     from app.services.table_service import merge_tables
@@ -275,6 +297,7 @@ async def _run_consolidation() -> None:
                 break
     else:
         logger.error("Auto-consolidate: timed out waiting for active hands to finish")
+        await _unpause_all_tables()
         return
 
     dst_table_id: int | None = None
@@ -290,13 +313,14 @@ async def _run_consolidation() -> None:
 
         if len(paused_tables) < 2:
             logger.info("Auto-consolidate: fewer than 2 paused tables, skipping")
+            await _unpause_all_tables()
             return
 
         # Pick destination = table with most seated players
         def _player_count(t: Table) -> int:
             return sum(
                 1 for s in t.seats
-                if s.seat_status == SeatStatus.SEATED and s.stack > 0
+                if s.seat_status != SeatStatus.EMPTY and s.stack > 0
             )
 
         paused_tables.sort(key=_player_count, reverse=True)
@@ -306,6 +330,7 @@ async def _run_consolidation() -> None:
 
         if not src_tables:
             logger.info("Auto-consolidate: no source tables with players, skipping")
+            await _unpause_all_tables()
             return
 
         # Merge each source into destination
@@ -318,6 +343,7 @@ async def _run_consolidation() -> None:
                 )
             except Exception:
                 logger.exception("Auto-consolidate: merge table %d → %d failed", src.table_no, dst_table.table_no)
+                await _unpause_all_tables()
                 return
 
         # Close empty source tables, open destination
