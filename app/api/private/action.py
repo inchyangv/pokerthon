@@ -1,7 +1,6 @@
 """Action submission endpoint with per-table locking."""
 from __future__ import annotations
 
-import json
 import time
 from typing import Any
 
@@ -162,38 +161,21 @@ async def submit_action(
         # Refresh hand to get updated state after action
         await session.refresh(hand)
 
-        # Load current snapshot for version tracking
-        snap_result = await session.execute(
-            select(TableSnapshot).where(TableSnapshot.table_id == table.id)
-        )
-        snap = snap_result.scalar_one_or_none()
-
         if hand.status == HandStatus.FINISHED:
             # complete_hand() already bumped and committed the snapshot.
-            # Do NOT double-bump. Just read the version it set.
+            snap_result = await session.execute(
+                select(TableSnapshot).where(TableSnapshot.table_id == table.id)
+            )
+            snap = snap_result.scalar_one_or_none()
             state_version = snap.version if snap else 0
         else:
             # Mid-hand: bump snapshot version and notify viewers.
-            snapshot_data = {
-                "hand_id": hand.id,
-                "street": hand.street,
-                "action_seat_no": hand.action_seat_no,
-            }
-            if snap:
-                snap.version += 1
-                snap.snapshot_json = json.dumps(snapshot_data)
-            else:
-                snap = TableSnapshot(
-                    table_id=table.id,
-                    version=1,
-                    snapshot_json=json.dumps(snapshot_data),
-                )
-                session.add(snap)
+            from app.services.snapshot_service import bump_snapshot
+            state_version = await bump_snapshot(session, table.id)
             await session.commit()
             # Invalidate in-process cache and notify SSE/long-poll waiters AFTER commit.
             invalidate_state_cache(table.id)
             fire_table_event(table.id)
-            state_version = snap.version
 
         response: dict[str, Any] = {
             "action": {

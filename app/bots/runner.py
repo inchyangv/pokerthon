@@ -141,6 +141,9 @@ async def _process_bot_turn(session: AsyncSession, bot_profile: BotProfile) -> N
             return  # Already processed
 
         from app.services.action_service import process_action
+        from app.services.snapshot_service import bump_snapshot, fire_table_event
+        from app.api.public.game_state import invalidate_state_cache
+
         action = await process_action(session, hand, bot_profile.account_id, action_type, amount)
         logger.info(
             "Bot %s (seat %d) submitted %s amount=%s",
@@ -150,29 +153,14 @@ async def _process_bot_turn(session: AsyncSession, bot_profile: BotProfile) -> N
             amount,
         )
 
-        # Update snapshot version
-        from app.models.hand import TableSnapshot
-        snap_result = await session.execute(
-            select(TableSnapshot).where(TableSnapshot.table_id == table.id)
-        )
-        snap = snap_result.scalar_one_or_none()
-        snapshot_data = {
-            "hand_id": hand.id,
-            "street": hand.street,
-            "action_seat_no": hand.action_seat_no,
-        }
-        if snap:
-            snap.version += 1
-            snap.snapshot_json = json.dumps(snapshot_data)
-        else:
-            snap = TableSnapshot(
-                table_id=table.id,
-                version=1,
-                snapshot_json=json.dumps(snapshot_data),
-            )
-            session.add(snap)
-
-        await session.commit()
+        # Refresh hand to check if showdown already completed it
+        await session.refresh(hand)
+        if hand.status != HandStatus.FINISHED:
+            # Mid-hand: bump snapshot, commit, and notify clients
+            await bump_snapshot(session, table.id)
+            await session.commit()
+            invalidate_state_cache(table.id)
+            fire_table_event(table.id)
 
 
 async def _auto_start_hands() -> None:
