@@ -41,6 +41,11 @@ async def sit(session: AsyncSession, account_id: int, table_no: int, seat_no: in
     if seat_no is not None and not (1 <= seat_no <= 9):
         raise ValueError("INVALID_ACTION: seat_no must be between 1 and 9")
 
+    # In tournament mode, prevent seat selection (random assignment only)
+    from app.config import settings
+    if seat_no is not None and settings.TOURNAMENT_MODE:
+        raise ValueError("INVALID_ACTION: Seat selection not allowed in tournament mode")
+
     # Find target seat
     seats_by_no = {s.seat_no: s for s in table.seats}
     if seat_no is not None:
@@ -81,6 +86,10 @@ async def sit(session: AsyncSession, account_id: int, table_no: int, seat_no: in
 
 
 async def stand(session: AsyncSession, account_id: int, table_no: int) -> dict:
+    from app.config import settings
+    if settings.TOURNAMENT_MODE:
+        raise ValueError("INVALID_ACTION: Cannot leave table during tournament")
+
     result = await session.execute(
         select(Table).where(Table.table_no == table_no)
     )

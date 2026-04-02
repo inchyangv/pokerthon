@@ -38,6 +38,7 @@ async def complete_hand(
     3. Bump table snapshot version.
     4. Schedule next hand in background if conditions are met.
     """
+    global _consolidation_in_progress
     # --- 1. Finish the hand ---
     hand.status = HandStatus.FINISHED
     hand.finished_at = datetime.now(timezone.utc)
@@ -192,6 +193,10 @@ async def complete_hand(
     fire_table_event(hand.table_id)
 
     if needs_consolidation:
+        # Set flag BEFORE scheduling to prevent duplicate consolidation from
+        # another complete_hand running between ensure_future and coroutine start.
+        _consolidation_in_progress = True
+
         # Notify all table clients about the pause
         for t in all_active_tables:
             if t.id != hand.table_id:
@@ -246,9 +251,12 @@ async def _delayed_next_hand(table_id: int) -> None:
 
 
 async def _auto_consolidate() -> None:
-    """Background: wait for active hands to finish, then merge tables into fewer."""
+    """Background: wait for active hands to finish, then merge tables into fewer.
+
+    Note: _consolidation_in_progress is already set True by the caller
+    (complete_hand) before ensure_future, to prevent race conditions.
+    """
     global _consolidation_in_progress
-    _consolidation_in_progress = True
     try:
         await _run_consolidation()
     finally:
